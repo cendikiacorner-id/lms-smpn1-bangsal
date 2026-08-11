@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://script.google.com https://script.googleusercontent.com https://*.googleusercontent.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#4f46e5">
+  <meta name="application-name" content="LMS SMPN 1 Bangsal">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="LMS Bangsal">
+  <title>LMS SMPN 1 Bangsal</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./assets/icon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./assets/icon-192.png">
+  <link rel="stylesheet" href="./styles.css?v=12.0">
+  <script defer src="./config.js"></script>
+  <script defer src="./vendor/xlsx.full.min.js"></script>
+  <script defer src="./vendor/exceljs.min.js"></script>
+  <script defer src="./app.js?v=12.0"></script>
+</head>
+<body>
+  <section id="loginView" class="login-view">
+    <div class="login-art">
+      <div class="glow glow-one"></div><div class="glow glow-two"></div>
+      <div class="brand-lockup">
+        <div class="brand-logo"><img src="./assets/logo-smpn1-bangsal.png" alt="Logo SMPN 1 Bangsal"></div>
+        <div><span class="eyebrow light">Ruang belajar digital</span><h1>LMS SMPN 1 Bangsal</h1></div>
+      </div>
+      <div class="login-hero-copy">
+        <span class="pill glass">Kurikulum Merdeka · Fase D</span>
+        <h2>Satu ruang untuk belajar, bertumbuh, dan berprestasi.</h2>
+        <p>Kelola pembelajaran seluruh mata pelajaran, absensi, tugas, proyek, dan penilaian dalam satu sistem yang sederhana.</p>
+      </div>
+      <div class="feature-row">
+        <div><span class="feature-icon">✓</span><p><b>Terintegrasi</b><small>Semua mapel & kelas</small></p></div>
+        <div><span class="feature-icon">↗</span><p><b>Responsif</b><small>Nyaman di HP</small></p></div>
+        <div><span class="feature-icon">◎</span><p><b>Terukur</b><small>Rekap otomatis</small></p></div>
+      </div>
+    </div>
+    <div class="login-panel">
+      <form id="loginForm" class="login-card">
+        <div class="mobile-brand"><img src="./assets/logo-smpn1-bangsal.png" alt="Logo"><b>LMS SMPN 1 Bangsal</b></div>
+        <span class="eyebrow">Selamat datang</span>
+        <h3>Masuk ke akun Anda</h3>
+        <p class="muted">Gunakan akun yang diberikan oleh administrator sekolah.</p>
+        <label>Nama pengguna
+          <div class="input-wrap"><span class="input-icon">@</span><input id="loginUsername" autocomplete="username" placeholder="Masukkan nama pengguna" required></div>
+        </label>
+        <label>Kata sandi
+          <div class="input-wrap"><span class="input-icon">••</span><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Masukkan kata sandi" required><button type="button" id="togglePassword" class="icon-btn tiny" aria-label="Tampilkan kata sandi">◉</button></div>
+        </label>
+        <div id="loginError" class="form-error hidden"></div>
+        <button class="btn btn-primary btn-block" type="submit"><span>Masuk ke LMS</span><span>→</span></button>
+        <div class="demo-box cloud-box">
+          <div><span class="demo-dot"></span><b>LMS Online Sekolah</b></div>
+          <p>Data tersimpan terpusat di Google Sheets dan Google Drive. Gunakan akun yang diberikan administrator.</p>
+          <small id="cloudStatus" class="muted">Memeriksa koneksi layanan…</small>
+        </div>
+        <footer>© 2026 SMP Negeri 1 Bangsal · Kab. Mojokerto · v1.0 Cloud</footer>
+      </form>
+    </div>
+  </section>
+
+  <div id="appShell" class="app-shell hidden">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-brand">
+        <img src="./assets/logo-smpn1-bangsal.png" alt="Logo SMPN 1 Bangsal">
+        <div><b>LMS</b><span>SMPN 1 Bangsal</span></div>
+        <button id="closeMenu" class="icon-btn sidebar-close">×</button>
+      </div>
+      <div class="school-year"><span>TA</span><div><small>Tahun Pelajaran</small><b id="sidebarYear">2026/2027</b></div></div>
+      <nav id="mainNav"></nav>
+      <div class="sidebar-footer">
+        <div class="user-mini"><div id="miniAvatar" class="avatar">YH</div><div><b id="miniName">Pengguna</b><small id="miniRole">Guru</small></div><button id="logoutBtn" class="icon-btn" title="Keluar">↪</button></div>
+      </div>
+    </aside>
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+    <section class="workspace">
+      <header class="topbar">
+        <button id="menuBtn" class="icon-btn menu-btn">☰</button>
+        <div class="top-title"><span id="breadcrumbs">LMS / Dasbor</span><h1 id="pageTitle">Dasbor</h1></div>
+        <div class="top-actions">
+          <div class="today"><span id="todayDay"></span><small id="todayDate"></small></div>
+          <button id="installAppBtn" class="btn btn-sm btn-soft install-btn hidden" type="button" title="Pasang LMS di perangkat"><b>＋</b><span>Pasang Aplikasi</span></button>
+          <button class="icon-btn notification" title="Notifikasi">♢<i></i></button>
+          <div id="topAvatar" class="avatar avatar-purple">YH</div>
+        </div>
+      </header>
+      <main id="pageContent" class="page-content"><div class="page-loader"><span></span><p>Memuat LMS...</p></div></main>
+    </section>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="modal-card">
+      <header><div><span id="modalEyebrow" class="eyebrow">Formulir</span><h2 id="modalTitle">Tambah Data</h2></div><button class="icon-btn" data-close-modal>×</button></header>
+      <div id="modalBody" class="modal-body"></div>
+    </section>
+  </div>
+  <div id="toastArea" class="toast-area"></div>
+</body>
+</html>
