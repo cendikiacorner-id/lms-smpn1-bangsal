@@ -1,7 +1,7 @@
-const CACHE_NAME = 'lms-bangsal-cloud-v13';
+const CACHE_NAME = 'lms-bangsal-cloud-v14';
 const APP_SHELL = [
-  './', './index.html', './offline.html', './styles.css?v=13.0', './config.js',
-  './app.js?v=13.0', './vendor/xlsx.full.min.js', './vendor/exceljs.min.js', './manifest.webmanifest',
+  './', './index.html', './offline.html', './styles.css?v=14.0', './config.js',
+  './app.js?v=14.0', './vendor/xlsx.full.min.js', './vendor/exceljs.min.js', './manifest.webmanifest',
   './assets/logo-smpn1-bangsal.png', './assets/icon-192.png', './assets/icon-512.png',
   './assets/template-data-siswa.xlsx'
 ];

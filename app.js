@@ -228,7 +228,7 @@ function openModal(title,body,eyebrow='Formulir'){$('#modalTitle').textContent=t
 function closeModal(){$('#modal').classList.add('hidden');document.body.style.overflow='';}
 function options(items,value=''){return items.map(x=>`<option value="${x.id}" ${String(x.id)===String(value)?'selected':''}>${esc(x.name||x.class_name||x.subject_name)}</option>`).join('');}
 
-function modalImport(){openModal('Impor Data Siswa',`<p class="muted" style="font-size:11px;margin-top:0">Gunakan empat kolom: <b>Kelas, Nomor Absen, Nama Lengkap, Jenis Kelamin</b>.</p><form id="importForm"><label class="drop-zone" id="dropZone"><input id="studentFile" type="file" accept=".xlsx" hidden><div class="upload-icon">⇧</div><h4>Pilih atau letakkan file Excel</h4><p>Format .xlsx · maksimal 10 MB</p></label><div id="selectedFile"></div><div id="importResult"></div><div class="form-actions"><a class="btn btn-secondary" href="./assets/template-data-siswa.xlsx">↓ Template</a><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Impor Sekarang</button></div></form>`,'Data siswa');}
+function modalImport(){openModal('Impor Data Siswa',`<p class="muted" style="font-size:11px;margin-top:0">Gunakan empat kolom: <b>Kelas, Nomor Absen, Nama Lengkap, Jenis Kelamin</b>.</p><form id="importForm"><label class="drop-zone" id="dropZone"><input id="studentFile" type="file" accept=".xlsx" hidden><div class="upload-icon">⇧</div><h4>Pilih atau letakkan file Excel</h4><p>Format .xlsx · maksimal 10 MB</p></label><div id="selectedFile"></div><div id="importProgress" class="import-progress hidden" role="status" aria-live="polite"></div><div id="importResult"></div><div class="form-actions"><a class="btn btn-secondary" href="./assets/template-data-siswa.xlsx">↓ Template</a><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Impor Sekarang</button></div></form>`,'Data siswa');}
 function modalClass(){openModal('Tambah Rombel Kelas IX',`<form id="classForm"><label style="display:grid;gap:8px;font-size:12px;font-weight:700">Nama rombel<input class="form-control" name="name" placeholder="Contoh: IX-D" pattern="IX-[A-Za-z0-9]+" required></label><p class="form-help">Gunakan format IX-A, IX-B, IX-1, dan seterusnya.</p><div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Rombel</button></div></form>`,'Master kelas');}
 function modalSubject(){openModal('Tambah Mata Pelajaran',`<form id="subjectForm" class="form-grid"><label>Kode mapel<input class="form-control" name="code" maxlength="8" placeholder="Contoh: BIG" required></label><label>Fase<input class="form-control" name="phase" value="D" readonly></label><label class="full">Nama mata pelajaran<input class="form-control" name="name" placeholder="Nama lengkap mata pelajaran" required></label><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Mata Pelajaran</button></div></form>`,'Master mapel');}
 function modalTeachingAssignment(){const d=state.data;openModal('Atur Penugasan Mengajar',`<form id="teachingAssignmentForm" class="form-grid"><label>Guru<select class="form-control" name="teacher_id" required><option value="">Pilih guru</option>${d.teachers.map(t=>`<option value="${t.id}">${esc(t.full_name)}</option>`).join('')}</select></label><label>Mata pelajaran<select class="form-control" name="subject_id" required><option value="">Pilih mapel</option>${options(d.subjects)}</select></label><div class="full"><label>Kelas yang diampu</label><div class="checkbox-grid">${d.classes.map(c=>`<label class="check-card"><input type="checkbox" name="class_ids" value="${c.id}"><span>${esc(c.name)}</span></label>`).join('')}</div></div><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Penugasan</button></div></form>`,'Guru & mapel');}
@@ -353,15 +353,23 @@ async function submitInline(form,path,transform,success){const obj=Object.fromEn
 function showSelectedFile(file){const el=$('#selectedFile');if(!file){el.innerHTML='';return}el.innerHTML=`<div class="selected-file"><span><b>${esc(file.name)}</b><br><small class="muted">${(file.size/1024).toFixed(1)} KB</small></span><span class="badge green">Siap</span></div>`;}
 function showTaskFile(file){const el=$('#taskFileInfo');if(!el||!file)return;if(file.size>8*1024*1024){$('#taskFile').value='';el.innerHTML='<div class="result-box warn">Ukuran berkas melebihi batas 8 MB.</div>';return}el.innerHTML=`<div class="selected-file"><span><b>📎 ${esc(file.name)}</b><br><small class="muted">${formatBytes(file.size)}</small></span><span class="badge green">Siap dikirim</span></div>`;}
 async function submitStudentWork(form){const fd=new FormData(form),file=$('#taskFile')?.files?.[0],btn=$('button[type="submit"], button:not([type])',form);if(file&&file.size>8*1024*1024)return toast('Berkas terlalu besar','Ukuran maksimal adalah 8 MB.','error');btn.disabled=true;btn.textContent=file?'Mengunggah...':'Mengirim...';try{const payload={assignment_id:Number(fd.get('assignment_id')),answer_text:fd.get('answer_text')||'',link:fd.get('link')||''};if(file){payload.file_name=file.name;payload.file_type=file.type;payload.file_content=await new Promise((res,rej)=>{const reader=new FileReader();reader.onload=()=>res(reader.result);reader.onerror=()=>rej(new Error('Berkas gagal dibaca.'));reader.readAsDataURL(file)})}const out=await api('/api/submissions',{method:'POST',body:JSON.stringify(payload)});toast('Tugas terkirim',`${out.status}${out.file_name?' · '+out.file_name:''}`);closeModal();await loadData();}catch(err){toast('Gagal mengirim tugas',err.message,'error');btn.disabled=false;btn.textContent='Kirim Tugas';}}
+function setImportProgress(kind,title,detail,percent){
+  const el=$('#importProgress');if(!el)return;
+  const safePercent=Math.max(0,Math.min(100,Number(percent)||0));
+  el.className=`import-progress ${kind||'active'}`;
+  el.innerHTML=`<div class="import-progress-head"><span class="import-progress-icon">${kind==='success'?'✓':kind==='warning'?'!':'↻'}</span><div><b>${esc(title)}</b><small>${esc(detail)}</small></div><strong>${safePercent}%</strong></div><div class="import-progress-track"><i style="width:${safePercent}%"></i></div>`;
+}
 async function importFile(form){
   const file=$('#studentFile').files[0];if(!file)return toast('Pilih file','Gunakan file Excel berformat .xlsx.','error');
   if(file.size>10*1024*1024)return toast('File terlalu besar','Ukuran file impor maksimal 10 MB.','error');
-  const btn=$('button[type="submit"], button:not([type])',form);btn.disabled=true;btn.textContent='Membaca Excel...';
+  const btn=$('button[type="submit"], button:not([type])',form);let saved=false;
+  btn.disabled=true;btn.textContent='Membaca Excel...';setImportProgress('active','Membaca file Excel','Tahap 1 dari 4 · jangan tutup halaman.',12);
   try{
     if(!window.XLSX)throw new Error('Komponen pembaca Excel belum tersedia. Muat ulang halaman.');
     const workbook=XLSX.read(await file.arrayBuffer(),{type:'array',cellDates:false});
     const sheet=workbook.Sheets[workbook.SheetNames[0]];const matrix=XLSX.utils.sheet_to_json(sheet,{header:1,defval:'',raw:false});
     if(!matrix.length)throw new Error('File Excel kosong.');
+    setImportProgress('active','Memeriksa susunan data','Tahap 2 dari 4 · memvalidasi kolom dan baris.',28);
     const normalize=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]/g,'');
     const header={};matrix[0].forEach((v,i)=>header[normalize(v)]=i);
     const find=(...names)=>names.map(normalize).map(n=>header[n]).find(v=>v!==undefined);
@@ -369,11 +377,26 @@ async function importFile(form){
     if(Object.values(index).some(v=>v===undefined))throw new Error('Kolom wajib: Kelas, Nomor Absen, Nama Lengkap, Jenis Kelamin.');
     const rows=matrix.slice(1).map((row,i)=>({row:i+2,class_name:row[index.class_name],attendance_no:row[index.attendance_no],full_name:row[index.full_name],gender:row[index.gender]})).filter(row=>[row.class_name,row.attendance_no,row.full_name,row.gender].some(v=>String(v||'').trim()));
     if(!rows.length)throw new Error('Tidak ada data siswa yang dapat diimpor.');
-    btn.textContent='Mengimpor ke cloud...';
-    const out=await api('/api/students/import',{method:'POST',body:JSON.stringify({rows})});state.lastImport=out.created;
-    $('#importResult').innerHTML=`<div class="import-result"><div class="result-box good"><b>${out.created.length} siswa baru</b> berhasil dibuat; ${out.updated.length} data diperbarui.</div>${out.errors.length?`<div class="result-box warn">${out.errors.length} baris perlu diperbaiki: ${out.errors.slice(0,5).map(x=>`baris ${esc(x.row)}`).join(', ')}.</div>`:''}${out.created.length?`<div><button type="button" class="btn btn-sm btn-secondary" data-action="download-credentials">↓ Unduh Daftar Akun</button></div><div class="credential-wrap"><table class="credential-table"><thead><tr><th>Siswa</th><th>Akun</th><th>Kata sandi</th></tr></thead><tbody>${out.created.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.username)}</td><td><code>${esc(x.password)}</code></td></tr>`).join('')}</tbody></table></div>`:''}</div>`;
-    toast('Impor selesai',`${out.created.length} akun siswa dibuat.`);await loadData();
-  }catch(err){toast('Impor gagal',err.message,'error')}finally{btn.disabled=false;btn.textContent='Impor Sekarang';}
+    btn.textContent='Menyimpan ke cloud...';setImportProgress('active','Menyimpan data siswa',`Tahap 3 dari 4 · ${rows.length} baris sedang diproses. Proses dapat memerlukan beberapa menit.`,55);
+    const out=await api('/api/students/import',{method:'POST',body:JSON.stringify({rows})});saved=true;state.lastImport=out.created;
+    const credentialNotice=out.created.length?'<div class="result-box warn"><b>Unduh daftar akun sebelum menutup jendela ini.</b> Kata sandi awal tidak dapat ditampilkan kembali setelah halaman dimuat ulang.</div>':'';
+    const errorDetails=out.errors.length?`<div class="result-box warn"><b>${out.errors.length} baris perlu diperbaiki.</b><br>${out.errors.slice(0,5).map(x=>`Baris ${esc(x.row)}: ${esc(x.message||'Data tidak valid.')}`).join('<br>')}</div>`:'';
+    $('#importResult').innerHTML=`<div class="import-result"><div class="result-box good"><b>${out.created.length} siswa baru</b> berhasil dibuat; ${out.updated.length} data diperbarui.</div>${errorDetails}${credentialNotice}${out.created.length?`<div><button type="button" class="btn btn-sm btn-secondary" data-action="download-credentials">↓ Unduh Daftar Akun</button></div><div class="credential-wrap"><table class="credential-table"><thead><tr><th>Siswa</th><th>Akun</th><th>Kata sandi</th></tr></thead><tbody>${out.created.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.username)}</td><td><code>${esc(x.password)}</code></td></tr>`).join('')}</tbody></table></div>`:''}</div>`;
+    setImportProgress('success','Data siswa sudah tersimpan',`Tahap 4 dari 4 · ${out.created.length} akun dibuat dan ${out.updated.length} data diperbarui.`,88);
+    toast('Impor berhasil',`${out.created.length} akun siswa dibuat.`);
+    btn.textContent='Memperbarui tampilan...';
+    try{
+      await loadData();
+      setImportProgress('success','Impor selesai','Data tersimpan dan tampilan LMS sudah diperbarui.',100);
+    }catch(refreshErr){
+      setImportProgress('warning','Impor berhasil; tampilan belum diperbarui','Data sudah aman. Unduh daftar akun, lalu tutup jendela dan muat ulang LMS bila diperlukan.',100);
+      toast('Data siswa sudah tersimpan','Penyegaran tampilan terlambat; ini bukan kegagalan impor.','success');
+    }
+  }catch(err){
+    if(!saved){setImportProgress('warning','Impor belum tersimpan',err.message,100);toast('Impor gagal',err.message,'error');}
+  }finally{
+    btn.disabled=saved;btn.textContent=saved?'Impor Selesai':'Impor Sekarang';
+  }
 }
 window.downloadCredentials=function(){if(!state.lastImport?.length)return;const rows=[['Kelas','Nomor Absen','Nama Lengkap','Nama Pengguna','Kata Sandi'],...state.lastImport.map(x=>[x.class,x.no,x.name,x.username,x.password])];const csv='\ufeff'+rows.map(r=>r.map(v=>`"${String(excelSafe(v)).replaceAll('"','""')}"`).join(';')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='akun-siswa-baru.csv';a.click();URL.revokeObjectURL(a.href);};
 async function markAttendance(sel){const old=sel.className;sel.disabled=true;try{await api('/api/attendance/mark',{method:'POST',body:JSON.stringify({session_id:Number(sel.dataset.session),student_id:Number(sel.dataset.student),status:sel.value})});sel.className=`status-select ${sel.value}`;toast('Tersimpan',`Status diubah menjadi ${sel.value}.`);await refreshSilently();}catch(err){sel.className=old;toast('Gagal',err.message,'error')}finally{sel.disabled=false}}
