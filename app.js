@@ -61,6 +61,7 @@ async function loadData(showLoader=false){
   if(showLoader)setLoading();
   state.data=await api('/api/bootstrap');state.user=state.data.user;
   renderChrome();renderPage();
+  if(Number(state.user.must_change)===1&&$('#modal').classList.contains('hidden'))setTimeout(modalChangePassword,0);
 }
 
 function renderChrome(){
@@ -233,6 +234,12 @@ function modalSubject(){openModal('Tambah Mata Pelajaran',`<form id="subjectForm
 function modalTeachingAssignment(){const d=state.data;openModal('Atur Penugasan Mengajar',`<form id="teachingAssignmentForm" class="form-grid"><label>Guru<select class="form-control" name="teacher_id" required><option value="">Pilih guru</option>${d.teachers.map(t=>`<option value="${t.id}">${esc(t.full_name)}</option>`).join('')}</select></label><label>Mata pelajaran<select class="form-control" name="subject_id" required><option value="">Pilih mapel</option>${options(d.subjects)}</select></label><div class="full"><label>Kelas yang diampu</label><div class="checkbox-grid">${d.classes.map(c=>`<label class="check-card"><input type="checkbox" name="class_ids" value="${c.id}"><span>${esc(c.name)}</span></label>`).join('')}</div></div><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Penugasan</button></div></form>`,'Guru & mapel');}
 function modalTeacher(){const d=state.data;openModal('Tambah Akun Guru',`<form id="teacherForm" class="form-grid"><label>Nama lengkap<input class="form-control" name="full_name" placeholder="Nama dan gelar" required></label><label>NIP <small>(opsional)</small><input class="form-control" name="nip" maxlength="40" placeholder="Untuk tanda tangan laporan"></label><label>Nama pengguna<input class="form-control" name="username" placeholder="Contoh: yudi" required></label><label>Kata sandi awal<input class="form-control" name="password" type="password" minlength="8" placeholder="Minimal 8 karakter" required></label><label>Mata pelajaran<select class="form-control" name="subject_id" required><option value="">Pilih mapel</option>${options(d.subjects)}</select></label><div class="full"><label>Kelas yang diampu</label><div class="checkbox-grid">${d.classes.map(c=>`<label class="check-card"><input type="checkbox" name="class_ids" value="${c.id}"><span>${esc(c.name)}</span></label>`).join('')}</div></div><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Guru</button></div></form>`,'Akun baru');}
 function modalTeacherProfile(id){const t=state.data.teachers.find(x=>x.id===id);if(!t)return;openModal('Edit Profil Guru',`<form id="teacherProfileForm" class="form-grid"><input type="hidden" name="teacher_id" value="${t.id}"><label class="full">Nama lengkap dan gelar<input class="form-control" name="full_name" value="${esc(t.full_name)}" maxlength="120" required></label><label class="full">NIP <small>(opsional)</small><input class="form-control" name="nip" value="${esc(t.nip||'')}" maxlength="40" placeholder="Ditampilkan pada tanda tangan laporan"></label><p class="form-help full">Perubahan nama berlaku pada tampilan akun dan seluruh laporan berikutnya. Nama pengguna tidak diubah.</p><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Profil</button></div></form>`,'Identitas penandatangan');}
+function modalChangePassword(){
+  const firstChange=Number(state.user?.must_change)===1;
+  closeMenu();
+  openModal(firstChange?'Ganti Kata Sandi Awal':'Ganti Kata Sandi',`<div class="result-box ${firstChange?'warn':'good'}" style="margin-bottom:16px">${firstChange?'<b>Amankan akun Anda.</b> Ganti kata sandi awal sebelum melanjutkan penggunaan LMS.':'Setelah kata sandi diganti, seluruh sesi akun ini akan dikeluarkan demi keamanan.'}</div><form id="passwordChangeForm" class="form-grid"><label class="full">Kata sandi saat ini<input id="currentPassword" class="form-control" name="current_password" type="password" autocomplete="current-password" maxlength="128" required></label><label>Kata sandi baru<input class="form-control" name="new_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" placeholder="Minimal 8 karakter" required></label><label>Ulangi kata sandi baru<input class="form-control" name="confirm_password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required></label><p class="form-help full">Gunakan 8–128 karakter, tanpa spasi di awal atau akhir, dan jangan gunakan kata sandi lama.</p><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Nanti</button><button type="submit" class="btn btn-primary">Ganti Kata Sandi</button></div></form>`,'Keamanan akun');
+  setTimeout(()=>$('#currentPassword')?.focus(),0);
+}
 function modalFormalReport(){
   const d=state.data;const teaching=d.teaching.filter(x=>!x.academic_year||x.academic_year===d.academic_year);const classes=[...new Map(teaching.map(x=>[x.class_id,{id:x.class_id,name:x.class_name}])).values()];
   if(!classes.length)return toast('Belum ada penugasan','Atur penugasan guru, kelas, dan mata pelajaran terlebih dahulu.','error');
@@ -289,7 +296,7 @@ $('#modal').addEventListener('click',e=>{if(e.target.closest('[data-close-modal]
 document.addEventListener('click',e=>{
   const page=e.target.closest('[data-page]');if(page){state.page=page.dataset.page;renderPage();closeMenu();return;}
   const a=e.target.closest('[data-action]');if(!a)return;const id=Number(a.dataset.id);
-  ({'import-students':modalImport,'add-class':modalClass,'add-subject':modalSubject,'add-teacher':modalTeacher,'edit-teacher':()=>modalTeacherProfile(id),'assign-teacher':modalTeachingAssignment,'formal-report':modalFormalReport,'add-assignment':modalAssignment,'new-attendance':modalAttendance,'manage-attendance':()=>modalManageAttendance(id),'submit-task':()=>modalSubmit(id),'view-submission':()=>modalReviewSubmission(id),'download-submission':()=>downloadSubmission(id,a),'download-credentials':()=>downloadCredentials(),'export-report':()=>downloadReport(a.dataset.kind,a),'open-gradebook':()=>{state.filters.gradeAssignment=id;state.page='grades';renderPage();},'close-attendance':()=>closeAttendance(id),'save-grade':()=>saveGrade(a)}[a.dataset.action]||(()=>{}))();
+  ({'change-password':modalChangePassword,'import-students':modalImport,'add-class':modalClass,'add-subject':modalSubject,'add-teacher':modalTeacher,'edit-teacher':()=>modalTeacherProfile(id),'assign-teacher':modalTeachingAssignment,'formal-report':modalFormalReport,'add-assignment':modalAssignment,'new-attendance':modalAttendance,'manage-attendance':()=>modalManageAttendance(id),'submit-task':()=>modalSubmit(id),'view-submission':()=>modalReviewSubmission(id),'download-submission':()=>downloadSubmission(id,a),'download-credentials':()=>downloadCredentials(),'export-report':()=>downloadReport(a.dataset.kind,a),'open-gradebook':()=>{state.filters.gradeAssignment=id;state.page='grades';renderPage();},'close-attendance':()=>closeAttendance(id),'save-grade':()=>saveGrade(a)}[a.dataset.action]||(()=>{}))();
 });
 
 document.addEventListener('change',e=>{
@@ -322,7 +329,25 @@ document.addEventListener('submit',e=>{
   if(f.id==='checkinForm'){e.preventDefault();submitInline(f,'/api/attendance/checkin',o=>o,'Presensi berhasil dicatat.');}
   if(f.id==='weightForm'){e.preventDefault();submitInline(f,'/api/grade-settings',o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,Number(v)])),'Bobot nilai berhasil diperbarui.');}
   if(f.id==='importForm'){e.preventDefault();importFile(f);}
+  if(f.id==='passwordChangeForm'){e.preventDefault();changePassword(f);}
 });
+
+async function changePassword(form){
+  const fd=new FormData(form),current=String(fd.get('current_password')||''),next=String(fd.get('new_password')||''),confirmation=String(fd.get('confirm_password')||'');
+  if(next!==confirmation)return toast('Kata sandi belum sama','Ulangi kata sandi baru dengan tepat.','error');
+  if(next===current)return toast('Kata sandi belum berubah','Gunakan kata sandi baru yang berbeda.','error');
+  const btn=$('button[type="submit"]',form);btn.disabled=true;btn.textContent='Mengamankan akun...';
+  try{
+    await api('/api/password/change',{method:'POST',body:JSON.stringify({current_password:current,new_password:next})});
+    const username=state.user?.username||'';
+    state.user=state.data=state.token=null;state.page='dashboard';
+    try{sessionStorage.removeItem('lms_token')}catch(_){}
+    form.reset();closeModal();closeMenu();$('#appShell').classList.add('hidden');$('#loginView').classList.remove('hidden');
+    $('#loginUsername').value=username;$('#loginPassword').value='';const box=$('#loginError');box.textContent='';box.classList.add('hidden');
+    toast('Kata sandi berhasil diganti','Seluruh sesi telah ditutup. Silakan masuk kembali dengan kata sandi baru.');
+    setTimeout(()=>$('#loginPassword')?.focus(),0);
+  }catch(err){toast('Gagal mengganti kata sandi',err.message,'error');btn.disabled=false;btn.textContent='Ganti Kata Sandi';}
+}
 
 async function submitInline(form,path,transform,success){const obj=Object.fromEntries(new FormData(form).entries());try{await api(path,{method:'POST',body:JSON.stringify(transform(obj))});toast('Berhasil',success);await loadData();}catch(err){toast('Gagal',err.message,'error')}}
 function showSelectedFile(file){const el=$('#selectedFile');if(!file){el.innerHTML='';return}el.innerHTML=`<div class="selected-file"><span><b>${esc(file.name)}</b><br><small class="muted">${(file.size/1024).toFixed(1)} KB</small></span><span class="badge green">Siap</span></div>`;}

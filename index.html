@@ -14,11 +14,11 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./assets/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="./assets/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=12.0">
+  <link rel="stylesheet" href="./styles.css?v=13.0">
   <script defer src="./config.js"></script>
   <script defer src="./vendor/xlsx.full.min.js"></script>
   <script defer src="./vendor/exceljs.min.js"></script>
-  <script defer src="./app.js?v=12.0"></script>
+  <script defer src="./app.js?v=13.0"></script>
 </head>
 <body>
   <section id="loginView" class="login-view">
@@ -73,6 +73,7 @@
       <div class="school-year"><span>TA</span><div><small>Tahun Pelajaran</small><b id="sidebarYear">2026/2027</b></div></div>
       <nav id="mainNav"></nav>
       <div class="sidebar-footer">
+        <button type="button" class="nav-item account-action" data-action="change-password"><span class="nav-icon">🔑</span><span>Ganti Kata Sandi</span></button>
         <div class="user-mini"><div id="miniAvatar" class="avatar">YH</div><div><b id="miniName">Pengguna</b><small id="miniRole">Guru</small></div><button id="logoutBtn" class="icon-btn" title="Keluar">↪</button></div>
       </div>
     </aside>
