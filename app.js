@@ -3,7 +3,7 @@ const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 const CLOUD_CONFIG = window.LMS_CONFIG || {};
 const API_URL = String(CLOUD_CONFIG.API_URL || '').trim();
 const API_CONFIGURED = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/.test(API_URL);
-const state = { user:null, data:null, token:null, page:'dashboard', lastImport:null, filters:{} };
+const state = { user:null, data:null, token:null, page:'dashboard', lastImport:null, lastPasswordReset:null, filters:{} };
 try { state.token = sessionStorage.getItem('lms_token'); } catch (_) {}
 
 const roleName = {admin:'Administrator',teacher:'Guru',student:'Siswa'};
@@ -39,7 +39,7 @@ async function api(path, options={}){
   if(options.body){try{payload=typeof options.body==='string'?JSON.parse(options.body):options.body}catch(_){throw new Error('Data permintaan tidak valid.')}}
   const query=String(path||'').split('?')[1];if(query)for(const [key,value] of new URLSearchParams(query))payload[key]=value;
   const request={...payload,action,token:state.token||''};
-  const longRequest=['submissions','students/import','reports/attendance','reports/grades','reports/learning','reports/archive'].includes(action);
+  const longRequest=['submissions','students/import','students/password/reset','reports/attendance','reports/grades','reports/learning','reports/archive'].includes(action);
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),Number(longRequest?CLOUD_CONFIG.UPLOAD_TIMEOUT_MS:CLOUD_CONFIG.REQUEST_TIMEOUT_MS)||(longRequest?120000:45000));
   try{
@@ -140,9 +140,9 @@ function renderStudents(){
   if(state.user.role!=='admin'){state.page='dashboard';return renderDashboard();}
   const d=state.data;const q=(state.filters.studentSearch||'').toLowerCase();const cls=state.filters.studentClass||'';
   const list=d.students.filter(s=>(!q||s.full_name.toLowerCase().includes(q)||s.username.toLowerCase().includes(q))&&(!cls||String(s.class_id)===cls));
-  $('#pageContent').innerHTML=`${head('Data Siswa',`Kelola peserta didik tahun pelajaran ${d.academic_year}.`,`<a class="btn btn-secondary" href="./assets/template-data-siswa.xlsx">↓ Unduh Template</a><button class="btn btn-primary" data-action="import-students">＋ Impor Excel</button>`)}
+  $('#pageContent').innerHTML=`${head('Data Siswa',`Kelola peserta didik tahun pelajaran ${d.academic_year}.`,`<a class="btn btn-secondary" href="./assets/template-data-siswa.xlsx">↓ Unduh Template</a><button class="btn btn-secondary" data-action="reset-class-passwords">🔑 Reset Sandi Kelas</button><button class="btn btn-primary" data-action="import-students">＋ Impor Excel</button>`)}
   <div class="toolbar"><div class="search-box"><input id="studentSearch" placeholder="Cari nama atau akun siswa..." value="${esc(state.filters.studentSearch||'')}"></div><select id="studentClassFilter" class="filter-select"><option value="">Semua kelas</option>${d.classes.map(c=>`<option value="${c.id}" ${String(c.id)===cls?'selected':''}>${esc(c.name)}</option>`).join('')}</select><span class="badge purple">${list.length} siswa</span></div>
-  <section class="table-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>No.</th><th>Nama lengkap</th><th>Kelas</th><th>Jenis kelamin</th><th>Nama pengguna</th><th>Status</th></tr></thead><tbody>${list.map(s=>`<tr><td><b>${esc(s.attendance_no)}</b></td><td><div class="person"><div class="avatar">${initials(s.full_name)}</div><div><b>${esc(s.full_name)}</b><small>Tahun ${esc(s.academic_year)}</small></div></div></td><td><span class="badge purple">${esc(s.class_name)}</span></td><td><span class="gender ${s.gender==='L'?'L':'P'}">${s.gender==='L'?'Laki-laki':'Perempuan'}</span></td><td><code>${esc(s.username)}</code></td><td><span class="badge green">● Aktif</span></td></tr>`).join('')}</tbody></table></div><div class="table-foot"><span>Menampilkan ${list.length} dari ${d.students.length} siswa</span><span>Data contoh · dapat diperbarui melalui Excel</span></div></section>`;
+  <section class="table-panel"><div class="table-wrap"><table class="data-table"><thead><tr><th>No.</th><th>Nama lengkap</th><th>Kelas</th><th>Jenis kelamin</th><th>Nama pengguna</th><th>Status</th><th></th></tr></thead><tbody>${list.map(s=>`<tr><td><b>${esc(s.attendance_no)}</b></td><td><div class="person"><div class="avatar">${initials(s.full_name)}</div><div><b>${esc(s.full_name)}</b><small>Tahun ${esc(s.academic_year)}</small></div></div></td><td><span class="badge purple">${esc(s.class_name)}</span></td><td><span class="gender ${s.gender==='L'?'L':'P'}">${s.gender==='L'?'Laki-laki':'Perempuan'}</span></td><td><code>${esc(s.username)}</code></td><td><span class="badge green">● Aktif</span></td><td><button class="btn btn-sm btn-soft" data-action="reset-student-password" data-id="${s.id}">Reset sandi</button></td></tr>`).join('')}</tbody></table></div><div class="table-foot"><span>Menampilkan ${list.length} dari ${d.students.length} siswa</span><span>Reset sandi tidak mengubah data siswa</span></div></section>`;
 }
 
 function renderTeachers(){
@@ -229,6 +229,15 @@ function closeModal(){$('#modal').classList.add('hidden');document.body.style.ov
 function options(items,value=''){return items.map(x=>`<option value="${x.id}" ${String(x.id)===String(value)?'selected':''}>${esc(x.name||x.class_name||x.subject_name)}</option>`).join('');}
 
 function modalImport(){openModal('Impor Data Siswa',`<p class="muted" style="font-size:11px;margin-top:0">Gunakan empat kolom: <b>Kelas, Nomor Absen, Nama Lengkap, Jenis Kelamin</b>.</p><form id="importForm"><label class="drop-zone" id="dropZone"><input id="studentFile" type="file" accept=".xlsx" hidden><div class="upload-icon">⇧</div><h4>Pilih atau letakkan file Excel</h4><p>Format .xlsx · maksimal 10 MB</p></label><div id="selectedFile"></div><div id="importProgress" class="import-progress hidden" role="status" aria-live="polite"></div><div id="importResult"></div><div class="form-actions"><a class="btn btn-secondary" href="./assets/template-data-siswa.xlsx">↓ Template</a><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Impor Sekarang</button></div></form>`,'Data siswa');}
+function modalStudentPasswordReset(id=0){
+  const d=state.data;const student=id?d.students.find(x=>x.id===id):null;if(id&&!student)return toast('Siswa tidak ditemukan','Muat ulang data lalu coba kembali.','error');
+  state.lastPasswordReset=null;
+  const selectedClass=String(state.filters.studentClass||'');
+  const target=student
+    ?`<input type="hidden" name="student_id" value="${student.id}"><div class="review-answer full"><b>Akun yang akan direset</b><p>${esc(student.class_name)} · No. ${esc(student.attendance_no)} · ${esc(student.full_name)} · ${esc(student.username)}</p></div>`
+    :`<label class="full">Rombel<select class="form-control" name="class_id" required><option value="">Pilih kelas</option>${d.classes.map(c=>{const count=d.students.filter(s=>s.class_id===c.id&&s.academic_year===d.academic_year).length;return `<option value="${c.id}" ${String(c.id)===selectedClass?'selected':''}>${esc(c.name)} · ${count} siswa</option>`}).join('')}</select></label>`;
+  openModal(student?'Reset Kata Sandi Siswa':'Reset Kata Sandi per Kelas',`<div class="result-box warn" style="margin-bottom:15px"><b>Reset akan langsung membatalkan kata sandi lama.</b><br>Akun, profil siswa, absensi, tugas, dan nilai tidak dihapus. Sandi baru hanya ditampilkan satu kali.</div><form id="passwordResetForm" class="form-grid">${target}<label class="check-line full"><input type="checkbox" name="confirmed" value="1" required><span><b>Saya memahami sandi lama tidak berlaku lagi</b><small>CSV baru harus segera diunduh dan disimpan secara privat.</small></span></label><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary" type="submit">🔑 Reset dan Buat Sandi Baru</button></div></form>`,'Khusus administrator');
+}
 function modalClass(){openModal('Tambah Rombel Kelas IX',`<form id="classForm"><label style="display:grid;gap:8px;font-size:12px;font-weight:700">Nama rombel<input class="form-control" name="name" placeholder="Contoh: IX-D" pattern="IX-[A-Za-z0-9]+" required></label><p class="form-help">Gunakan format IX-A, IX-B, IX-1, dan seterusnya.</p><div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Rombel</button></div></form>`,'Master kelas');}
 function modalSubject(){openModal('Tambah Mata Pelajaran',`<form id="subjectForm" class="form-grid"><label>Kode mapel<input class="form-control" name="code" maxlength="8" placeholder="Contoh: BIG" required></label><label>Fase<input class="form-control" name="phase" value="D" readonly></label><label class="full">Nama mata pelajaran<input class="form-control" name="name" placeholder="Nama lengkap mata pelajaran" required></label><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Mata Pelajaran</button></div></form>`,'Master mapel');}
 function modalTeachingAssignment(){const d=state.data;openModal('Atur Penugasan Mengajar',`<form id="teachingAssignmentForm" class="form-grid"><label>Guru<select class="form-control" name="teacher_id" required><option value="">Pilih guru</option>${d.teachers.map(t=>`<option value="${t.id}">${esc(t.full_name)}</option>`).join('')}</select></label><label>Mata pelajaran<select class="form-control" name="subject_id" required><option value="">Pilih mapel</option>${options(d.subjects)}</select></label><div class="full"><label>Kelas yang diampu</label><div class="checkbox-grid">${d.classes.map(c=>`<label class="check-card"><input type="checkbox" name="class_ids" value="${c.id}"><span>${esc(c.name)}</span></label>`).join('')}</div></div><div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">Simpan Penugasan</button></div></form>`,'Guru & mapel');}
@@ -296,7 +305,7 @@ $('#modal').addEventListener('click',e=>{if(e.target.closest('[data-close-modal]
 document.addEventListener('click',e=>{
   const page=e.target.closest('[data-page]');if(page){state.page=page.dataset.page;renderPage();closeMenu();return;}
   const a=e.target.closest('[data-action]');if(!a)return;const id=Number(a.dataset.id);
-  ({'change-password':modalChangePassword,'import-students':modalImport,'add-class':modalClass,'add-subject':modalSubject,'add-teacher':modalTeacher,'edit-teacher':()=>modalTeacherProfile(id),'assign-teacher':modalTeachingAssignment,'formal-report':modalFormalReport,'add-assignment':modalAssignment,'new-attendance':modalAttendance,'manage-attendance':()=>modalManageAttendance(id),'submit-task':()=>modalSubmit(id),'view-submission':()=>modalReviewSubmission(id),'download-submission':()=>downloadSubmission(id,a),'download-credentials':()=>downloadCredentials(),'export-report':()=>downloadReport(a.dataset.kind,a),'open-gradebook':()=>{state.filters.gradeAssignment=id;state.page='grades';renderPage();},'close-attendance':()=>closeAttendance(id),'save-grade':()=>saveGrade(a)}[a.dataset.action]||(()=>{}))();
+  ({'change-password':modalChangePassword,'import-students':modalImport,'reset-class-passwords':()=>modalStudentPasswordReset(),'reset-student-password':()=>modalStudentPasswordReset(id),'add-class':modalClass,'add-subject':modalSubject,'add-teacher':modalTeacher,'edit-teacher':()=>modalTeacherProfile(id),'assign-teacher':modalTeachingAssignment,'formal-report':modalFormalReport,'add-assignment':modalAssignment,'new-attendance':modalAttendance,'manage-attendance':()=>modalManageAttendance(id),'submit-task':()=>modalSubmit(id),'view-submission':()=>modalReviewSubmission(id),'download-submission':()=>downloadSubmission(id,a),'download-credentials':()=>downloadCredentials(),'download-reset-credentials':()=>downloadResetCredentials(),'export-report':()=>downloadReport(a.dataset.kind,a),'open-gradebook':()=>{state.filters.gradeAssignment=id;state.page='grades';renderPage();},'close-attendance':()=>closeAttendance(id),'save-grade':()=>saveGrade(a)}[a.dataset.action]||(()=>{}))();
 });
 
 document.addEventListener('change',e=>{
@@ -329,6 +338,7 @@ document.addEventListener('submit',e=>{
   if(f.id==='checkinForm'){e.preventDefault();submitInline(f,'/api/attendance/checkin',o=>o,'Presensi berhasil dicatat.');}
   if(f.id==='weightForm'){e.preventDefault();submitInline(f,'/api/grade-settings',o=>Object.fromEntries(Object.entries(o).map(([k,v])=>[k,Number(v)])),'Bobot nilai berhasil diperbarui.');}
   if(f.id==='importForm'){e.preventDefault();importFile(f);}
+  if(f.id==='passwordResetForm'){e.preventDefault();resetStudentPasswords(f);}
   if(f.id==='passwordChangeForm'){e.preventDefault();changePassword(f);}
 });
 
@@ -353,6 +363,38 @@ async function submitInline(form,path,transform,success){const obj=Object.fromEn
 function showSelectedFile(file){const el=$('#selectedFile');if(!file){el.innerHTML='';return}el.innerHTML=`<div class="selected-file"><span><b>${esc(file.name)}</b><br><small class="muted">${(file.size/1024).toFixed(1)} KB</small></span><span class="badge green">Siap</span></div>`;}
 function showTaskFile(file){const el=$('#taskFileInfo');if(!el||!file)return;if(file.size>8*1024*1024){$('#taskFile').value='';el.innerHTML='<div class="result-box warn">Ukuran berkas melebihi batas 8 MB.</div>';return}el.innerHTML=`<div class="selected-file"><span><b>📎 ${esc(file.name)}</b><br><small class="muted">${formatBytes(file.size)}</small></span><span class="badge green">Siap dikirim</span></div>`;}
 async function submitStudentWork(form){const fd=new FormData(form),file=$('#taskFile')?.files?.[0],btn=$('button[type="submit"], button:not([type])',form);if(file&&file.size>8*1024*1024)return toast('Berkas terlalu besar','Ukuran maksimal adalah 8 MB.','error');btn.disabled=true;btn.textContent=file?'Mengunggah...':'Mengirim...';try{const payload={assignment_id:Number(fd.get('assignment_id')),answer_text:fd.get('answer_text')||'',link:fd.get('link')||''};if(file){payload.file_name=file.name;payload.file_type=file.type;payload.file_content=await new Promise((res,rej)=>{const reader=new FileReader();reader.onload=()=>res(reader.result);reader.onerror=()=>rej(new Error('Berkas gagal dibaca.'));reader.readAsDataURL(file)})}const out=await api('/api/submissions',{method:'POST',body:JSON.stringify(payload)});toast('Tugas terkirim',`${out.status}${out.file_name?' · '+out.file_name:''}`);closeModal();await loadData();}catch(err){toast('Gagal mengirim tugas',err.message,'error');btn.disabled=false;btn.textContent='Kirim Tugas';}}
+async function resetStudentPasswords(form){
+  const fd=new FormData(form);if(!fd.has('confirmed'))return toast('Konfirmasi diperlukan','Centang pernyataan sebelum mereset kata sandi.','error');
+  const payload={};if(fd.get('student_id'))payload.student_id=Number(fd.get('student_id'));else if(fd.get('class_id'))payload.class_id=Number(fd.get('class_id'));else return toast('Pilih sasaran','Pilih siswa atau rombel yang akan direset.','error');
+  const btn=$('button[type="submit"]',form);btn.disabled=true;btn.textContent='Membuat sandi baru...';let out;
+  try{out=await api('/api/students/password/reset',{method:'POST',body:JSON.stringify(payload)});}
+  catch(err){
+    const code=Number(err.code||0);if(code>=400&&code<500){toast('Reset ditolak',err.message,'error');btn.disabled=false;btn.textContent='🔑 Reset dan Buat Sandi Baru';return;}
+    $('#modalTitle').textContent='Status Reset Belum Pasti';$('#modalEyebrow').textContent='Jangan ulangi';
+    $('#modalBody').innerHTML=`<div class="result-box warn"><b>Browser tidak menerima konfirmasi akhir dari layanan.</b><br>${esc(err.message)} Jangan menekan reset lagi sebelum administrator memeriksa Apps Script → Executions.</div><div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Tutup dan Periksa</button></div>`;
+    toast('Status belum pasti','Jangan ulangi reset sebelum memeriksa riwayat eksekusi.','error');return;
+  }
+  // Once the API succeeds, never re-enable or relabel this as a failed reset: the
+  // hashes have already changed. Keep credentials in memory and offer manual CSV
+  // download even if the automatic browser download is blocked.
+  state.lastPasswordReset=out.credentials||[];
+  if(!state.lastPasswordReset.length){
+    $('#modalTitle').textContent='Reset Telah Diproses';$('#modalEyebrow').textContent='Jangan ulangi';
+    $('#modalBody').innerHTML='<div class="result-box warn"><b>Layanan menyelesaikan reset, tetapi daftar akun tidak diterima browser.</b><br>Jangan menekan reset lagi. Muat ulang lalu hubungi pengelola teknis.</div><div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Tutup</button></div>';
+    return toast('Reset telah diproses','Daftar akun tidak diterima. Jangan ulangi reset.','error');
+  }
+  let downloaded=true;try{downloadResetCredentials();}catch(err){downloaded=false;console.error(err);}
+  $('#modalTitle').textContent='Kata Sandi Baru Siap';$('#modalEyebrow').textContent='Simpan sekarang';
+  $('#modalBody').innerHTML=`<div class="result-box good"><b>${out.reset_count} akun siswa berhasil direset.</b><br>Data siswa, absensi, tugas, dan nilai tetap utuh.</div><div class="result-box warn" style="margin-top:9px"><b>${downloaded?'CSV otomatis diunduh.':'Unduh CSV dengan tombol di bawah.'}</b> Simpan secara privat. Daftar sandi ini tidak dapat ditampilkan lagi setelah halaman dimuat ulang.</div><div style="margin-top:12px"><button type="button" class="btn btn-primary" data-action="download-reset-credentials">↓ ${downloaded?'Unduh Lagi':'Unduh'} CSV Akun</button></div><div class="credential-wrap"><table class="credential-table"><thead><tr><th>Siswa</th><th>Akun</th><th>Kata sandi baru</th></tr></thead><tbody>${state.lastPasswordReset.map(x=>`<tr><td>${esc(x.class)} · ${esc(x.no)} · ${esc(x.name)}</td><td><code>${esc(x.username)}</code></td><td><code>${esc(x.password)}</code></td></tr>`).join('')}</tbody></table></div><div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Selesai</button></div>`;
+  toast('Reset berhasil',`${out.reset_count} akun diperbarui${downloaded?' dan CSV baru diunduh':'; segera unduh CSV'}.`);
+}
+function downloadResetCredentials(){
+  const credentials=state.lastPasswordReset;if(!credentials?.length)return toast('Daftar tidak tersedia','Lakukan reset kata sandi terlebih dahulu.','error');
+  const rows=[['Kelas','Nomor Absen','Nama Lengkap','Nama Pengguna','Kata Sandi'],...credentials.map(x=>[x.class,x.no,x.name,x.username,x.password])];
+  const csv='\ufeff'+rows.map(row=>row.map(value=>`"${String(excelSafe(value)).replaceAll('"','""')}"`).join(';')).join('\n');
+  const classes=[...new Set(credentials.map(x=>x.class).filter(Boolean))];const scope=classes.length===1?classes[0].replace(/[^A-Za-z0-9-]/g,'-'):'siswa';
+  downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),`akun-siswa-reset-${scope}-${localDateValue()}.csv`);
+}
 function setImportProgress(kind,title,detail,percent){
   const el=$('#importProgress');if(!el)return;
   const safePercent=Math.max(0,Math.min(100,Number(percent)||0));
