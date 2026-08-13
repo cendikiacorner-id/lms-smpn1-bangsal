@@ -48,6 +48,16 @@ function invalidateSession(message='Sesi berakhir. Silakan masuk kembali.'){
   closeModal();closeMenu();$('#appShell')?.classList.add('hidden');$('#loginView')?.classList.remove('hidden');
   const box=$('#loginError');if(box){box.textContent=message;box.classList.toggle('hidden',!message)}
 }
+function parseApiBody(text){
+  const value=String(text||'').replace(/^\uFEFF/,'').trim();if(!value)return null;
+  try{return JSON.parse(value)}catch(_){}
+  // Some gateways wrap a valid ContentService payload. Accept only one object that
+  // still has the API's explicit boolean `ok` contract; never evaluate response text.
+  const first=value.indexOf('{'),last=value.lastIndexOf('}');
+  if(first>=0&&last>first){try{const body=JSON.parse(value.slice(first,last+1));if(body&&typeof body==='object'&&typeof body.ok==='boolean')return body}catch(_){}}
+  return null;
+}
+function shouldRetryNonJson(action,attempt){return action==='login'&&attempt===1;}
 async function api(path, options={}){
   if(!API_CONFIGURED)throw new Error('URL Google Apps Script belum dipasang pada config.js.');
   const action=String(path||'').replace(/^\/+api\//,'').split('?')[0].replace(/\/$/,'');
@@ -57,24 +67,35 @@ async function api(path, options={}){
   const requestToken=state.token||'';
   const request={...payload,action,token:requestToken};
   const longRequest=['submissions','students/import','students/password/reset','reports/attendance','reports/grades','reports/learning','reports/archive','feed/post/save','feed/file','materials/save','materials/file'].includes(action);
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),Number(longRequest?CLOUD_CONFIG.UPLOAD_TIMEOUT_MS:CLOUD_CONFIG.REQUEST_TIMEOUT_MS)||(longRequest?120000:45000));
-  try{
-    const response=await fetch(API_URL,{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',redirect:'follow',signal:controller.signal,headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify(request)});
-    const text=await response.text();let body;
-    try{body=JSON.parse(text)}catch(_){throw new Error('Respons layanan Google tidak dapat dibaca. Pastikan deployment Apps Script menggunakan akses “Anyone”.')}
-    if(!response.ok||!body.ok){
-      const error=new Error(body.error||'Permintaan gagal');error.code=body.code||response.status;error.action=action;error.requestId=body.request_id||'';
-      // A delayed response belonging to an older token must never sign out a newer session.
-      if(Number(error.code)===401&&action!=='login'&&responseOwnsCurrentSession(requestToken))invalidateSession(error.message);
-      throw error;
-    }
-    return body;
-  }catch(err){
-    if(err.name==='AbortError')throw new Error('Layanan belum merespons. Periksa koneksi lalu coba lagi.');
-    if(err instanceof TypeError)throw new Error('Tidak dapat terhubung ke Google Apps Script. Periksa URL deployment dan izin aksesnya.');
-    throw err;
-  }finally{clearTimeout(timeout);}
+  const maxAttempts=action==='login'?2:1;
+  for(let attempt=1;attempt<=maxAttempts;attempt+=1){
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),Number(longRequest?CLOUD_CONFIG.UPLOAD_TIMEOUT_MS:CLOUD_CONFIG.REQUEST_TIMEOUT_MS)||(longRequest?120000:45000));
+    try{
+      const separator=API_URL.includes('?')?'&':'?';
+      const endpoint=action==='login'?`${API_URL}${separator}lms_login_attempt=${Date.now()}-${attempt}`:API_URL;
+      const response=await fetch(endpoint,{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',redirect:'follow',signal:controller.signal,headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify(request)});
+      const text=await response.text(),body=parseApiBody(text);
+      if(!body){
+        if(shouldRetryNonJson(action,attempt)){await new Promise(resolve=>setTimeout(resolve,700));continue;}
+        const contentType=String(response.headers?.get?.('content-type')||'tanpa-content-type').split(';')[0];
+        const error=new Error(`Google mengirim respons perantara yang bukan data LMS (HTTP ${response.status}, ${contentType}, kode G-${response.status}-${text.length}). Coba dari Chrome biasa tanpa VPN atau pemblokir konten.`);
+        error.code='NON_JSON_RESPONSE';error.action=action;throw error;
+      }
+      if(!response.ok||!body.ok){
+        const error=new Error(body.error||'Permintaan gagal');error.code=body.code||response.status;error.action=action;error.requestId=body.request_id||'';
+        // A delayed response belonging to an older token must never sign out a newer session.
+        if(Number(error.code)===401&&action!=='login'&&responseOwnsCurrentSession(requestToken))invalidateSession(error.message);
+        throw error;
+      }
+      return body;
+    }catch(err){
+      if(err.name==='AbortError')throw new Error('Layanan belum merespons. Periksa koneksi lalu coba lagi.');
+      if(err instanceof TypeError)throw new Error('Tidak dapat terhubung ke Google Apps Script. Coba Chrome biasa tanpa VPN atau pemblokir konten.');
+      throw err;
+    }finally{clearTimeout(timeout);}
+  }
+  throw new Error('Login belum dapat diproses oleh layanan Google.');
 }
 function toast(title,message='',type='success'){const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<i></i><div><b>${esc(title)}</b><span>${esc(message)}</span></div>`;$('#toastArea').append(el);setTimeout(()=>el.remove(),3800);}
 function setLoading(){ $('#pageContent').innerHTML='<div class="page-loader"><span></span><p>Memuat data terbaru...</p></div>'; }
