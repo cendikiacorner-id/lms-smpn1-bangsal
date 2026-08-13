@@ -19,6 +19,18 @@ navByRole.student.splice(0, navByRole.student.length,
 var quizAutosaveTimer = null;
 var quizCountdownTimer = null;
 var activeQuizAttempt = null;
+var POST_DRAFT_PREFIX = 'lms_post_draft_v20_1_';
+
+function postDraftKey(){ return POST_DRAFT_PREFIX+String(state.user?.username||state.user?.id||'anonymous'); }
+function readPostDraft(){
+  try{
+    const draft=JSON.parse(sessionStorage.getItem(postDraftKey())||'null');
+    if(!draft||Date.now()-Number(draft.saved_at||0)>7*86400000){sessionStorage.removeItem(postDraftKey());return null;}
+    return draft;
+  }catch(_){return null;}
+}
+function savePostDraft(payload){try{sessionStorage.setItem(postDraftKey(),JSON.stringify({...payload,saved_at:Date.now()}));}catch(_){} }
+function clearPostDraft(){try{sessionStorage.removeItem(postDraftKey());}catch(_){} }
 
 function pageStill(name){ return state.page === name && state.user; }
 function statusLabel(value){
@@ -68,8 +80,18 @@ function timelinePost(post,comments){
 }
 function modalPost(id=0){
   const existing=id&&state.feedData?.posts.find(x=>Number(x.id)===id),student=state.user.role==='student';if(id&&!existing)return;
-  const current=existing?`${existing.class_id}|${existing.subject_id}`:'';
-  openModal(existing?'Edit Kiriman':(student?'Mulai Diskusi':'Buat Kiriman Kelas'),`<form id="postForm" class="form-grid"><input type="hidden" name="id" value="${existing?.id||''}"><label class="full">Kelas & mata pelajaran<select id="postPair" class="form-control" required><option value="">Pilih ruang kelas</option>${pairOptions(existing?.class_id,existing?.subject_id)}</select></label>${student?'<input type="hidden" name="post_type" value="discussion">':`<label>Jenis kiriman<select class="form-control" name="post_type"><option value="announcement" ${existing?.post_type==='announcement'?'selected':''}>Pengumuman</option><option value="discussion" ${existing?.post_type==='discussion'?'selected':''}>Diskusi</option></select></label><label>Jadwal terbit <small>(opsional)</small><input class="form-control" type="datetime-local" name="publish_at" value="${esc((existing?.publish_at||'').slice(0,16))}"></label>`}<label class="full">Judul <small>(opsional untuk diskusi)</small><input class="form-control" name="title" maxlength="180" value="${esc(existing?.title||'')}" placeholder="Topik singkat"></label><label class="full">Isi kiriman<textarea class="form-control tall" name="body" maxlength="10000" required placeholder="Tulis pengumuman atau pertanyaan diskusi...">${esc(existing?.body||'')}</textarea></label><label class="full">Lampiran privat <small>(opsional, maks. 8 MB)</small><input class="form-control" id="postFile" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.zip,.mp3,.mp4"></label>${!student?`<label class="check-line full"><input type="checkbox" name="is_important" value="1" ${Number(existing?.is_important)?'checked':''}><span><b>Kirim sebagai informasi penting</b><small>Membuat notifikasi dalam aplikasi dan antrean email hanya untuk email siswa yang telah disetujui admin.</small></span></label>`:''}<div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button class="btn btn-primary">${existing?'Simpan Perubahan':'Terbitkan'}</button></div></form>`,'Linimasa kelas');
+  const draft=!existing&&readPostDraft(),model=existing||draft||{};
+  openModal(existing?'Edit Kiriman':(student?'Mulai Diskusi':'Buat Kiriman Kelas'),`<form id="postForm" class="form-grid">
+    ${draft?'<div class="result-box warn full"><b>Draf sebelumnya dipulihkan.</b><br>Periksa kembali isinya. Jika sebelumnya memilih lampiran, pilih ulang berkas tersebut sebelum menerbitkan.</div>':''}
+    <input type="hidden" name="id" value="${existing?.id||''}">
+    <label class="full">Kelas & mata pelajaran<select id="postPair" class="form-control" required><option value="">Pilih ruang kelas</option>${pairOptions(model.class_id,model.subject_id)}</select></label>
+    ${student?'<input type="hidden" name="post_type" value="discussion">':`<label>Jenis kiriman<select class="form-control" name="post_type"><option value="announcement" ${model.post_type!=='discussion'?'selected':''}>Pengumuman</option><option value="discussion" ${model.post_type==='discussion'?'selected':''}>Diskusi</option></select></label><label>Jadwal terbit <small>(opsional)</small><input class="form-control" type="datetime-local" name="publish_at" value="${esc((model.publish_at||'').slice(0,16))}"></label>`}
+    <label class="full">Judul <small>(opsional untuk diskusi)</small><input class="form-control" name="title" maxlength="180" value="${esc(model.title||'')}" placeholder="Topik singkat"></label>
+    <label class="full">Isi kiriman<textarea class="form-control tall" name="body" maxlength="10000" required placeholder="Tulis pengumuman atau pertanyaan diskusi...">${esc(model.body||'')}</textarea></label>
+    <label class="full">Lampiran privat <small>(opsional, maks. 8 MB)</small><input class="form-control" id="postFile" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.zip,.mp3,.mp4"></label>
+    ${!student?`<label class="check-line full"><input type="checkbox" name="is_important" value="1" ${model.is_important?'checked':''}><span><b>Kirim sebagai informasi penting</b><small>Membuat notifikasi dalam aplikasi dan antrean email hanya untuk email siswa yang telah disetujui admin.</small></span></label>`:''}
+    <div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button type="submit" class="btn btn-primary">${existing?'Simpan Perubahan':'Terbitkan'}</button></div>
+  </form>`,'Linimasa kelas');
 }
 
 async function renderNotifications(){
@@ -190,7 +212,25 @@ document.addEventListener('click',event=>{if(event.target.closest('[data-close-m
 document.addEventListener('submit',async event=>{
   const form=event.target;
   if(form.matches('.comment-form')){event.preventDefault();const input=$('input[name="body"]',form);try{await api('/api/feed/comment/save',{method:'POST',body:JSON.stringify({post_id:Number(form.dataset.post),body:input.value})});input.value='';toast('Komentar dikirim');renderTimeline();}catch(error){toast('Gagal',error.message,'error')}return;}
-  if(form.id==='postForm'){event.preventDefault();const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),pair=$('#postPair').value.split('|').map(Number),btn=$('button[type="submit"],button:not([type])',form);btn.disabled=true;try{const file=await readUiFile($('#postFile').files[0]);await api('/api/feed/post/save',{method:'POST',body:JSON.stringify({...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],is_important:fd.has('is_important'),publish_at:obj.publish_at?obj.publish_at+':00':'',...file})});toast('Kiriman disimpan');closeModal();renderTimeline();}catch(error){toast('Gagal',error.message,'error');btn.disabled=false}return;}
+  if(form.id==='postForm'){
+    event.preventDefault();
+    const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),pair=$('#postPair').value.split('|').map(Number),btn=$('button[type="submit"],button:not([type])',form);
+    const post={...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],is_important:fd.has('is_important'),publish_at:obj.publish_at||''};
+    if(!post.id)savePostDraft(post);
+    if(btn)btn.disabled=true;
+    try{
+      const file=await readUiFile($('#postFile').files[0]);
+      await api('/api/feed/post/save',{method:'POST',body:JSON.stringify({...post,publish_at:post.publish_at?post.publish_at+':00':'',...file})});
+      if(!post.id)clearPostDraft();
+      toast('Kiriman disimpan');closeModal();renderTimeline();
+    }catch(error){
+      const sessionEnded=Number(error.code)===401;
+      const guidance=sessionEnded?'Silakan masuk kembali, lalu buka Linimasa Kelas dan pilih Buat Kiriman; draf akan dipulihkan.':'Periksa linimasa sebelum mencoba lagi. Draf teks tetap tersimpan; lampiran perlu dipilih ulang.';
+      if(sessionEnded){const box=$('#loginError');if(box){box.textContent=`${error.message} ${guidance}`;box.classList.remove('hidden')}}
+      toast('Kiriman belum tersimpan',`${error.message} ${guidance}`,'error');if(btn)btn.disabled=false;
+    }
+    return;
+  }
   if(form.id==='moduleForm'){event.preventDefault();const obj=Object.fromEntries(new FormData(form).entries()),pair=$('#modulePair').value.split('|').map(Number);submitForm(form,'/api/modules/save',()=>({...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],position:Number(obj.position)}),'Modul berhasil disimpan.');return;}
   if(form.id==='materialForm'){event.preventDefault();const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),btn=$('button[type="submit"],button:not([type])',form);btn.disabled=true;try{const file=await readUiFile($('#materialFile').files[0]);await api('/api/materials/save',{method:'POST',body:JSON.stringify({...obj,id:Number(obj.id||0),module_id:Number(obj.module_id),position:Number(obj.position),publish_at:obj.publish_at?obj.publish_at+':00':'',...file})});toast('Materi disimpan');closeModal();renderMaterials();}catch(error){toast('Gagal',error.message,'error');btn.disabled=false}return;}
   if(form.id==='quizForm'){event.preventDefault();const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),pair=$('#quizPair').value.split('|').map(Number);submitForm(form,'/api/quizzes/save',()=>({...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],duration_minutes:Number(obj.duration_minutes),max_attempts:Number(obj.max_attempts),shuffle_questions:fd.has('shuffle_questions'),shuffle_options:fd.has('shuffle_options'),show_result:fd.has('show_result'),open_at:obj.open_at+':00',close_at:obj.close_at+':00'}),'Kuis berhasil disimpan.');return;}

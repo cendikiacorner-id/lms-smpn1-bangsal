@@ -5,7 +5,15 @@ const API_URL = String(CLOUD_CONFIG.API_URL || '').trim();
 const API_CONFIGURED = /^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec(?:\?.*)?$/.test(API_URL);
 const state = { user:null, data:null, token:null, page:'dashboard', lastImport:null, lastPasswordReset:null, filters:{} };
 let modalReturnFocus = null;
+let authEpoch = 0;
 try { state.token = sessionStorage.getItem('lms_token'); } catch (_) {}
+
+// Every form inside the authenticated application is handled with JavaScript.
+// Prevent native navigation even if a feature listener fails before handling it.
+document.addEventListener('submit',event=>{
+  const form=event.target;
+  if(form?.closest?.('#appShell')||form?.closest?.('#modal'))event.preventDefault();
+},true);
 
 const roleName = {admin:'Administrator',teacher:'Guru',student:'Siswa'};
 const monthShort = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -33,13 +41,21 @@ function fmtDate(value, withTime=false){if(!value)return '—';const d=new Date(
 function localDateValue(){const d=new Date(),offset=d.getTimezoneOffset()*60000;return new Date(d-offset).toISOString().slice(0,10);}
 function dueInfo(value){const ms=new Date(value)-new Date();const days=Math.ceil(ms/86400000);if(days<0)return {text:'Terlambat',cls:'red'};if(days===0)return {text:'Hari ini',cls:'orange'};if(days===1)return {text:'Besok',cls:'orange'};return {text:`${days} hari lagi`,cls:days<4?'orange':'purple'};}
 function formatBytes(n=0){n=Number(n)||0;if(n<1)return '0 KB';if(n<1024*1024)return `${Math.max(1,Math.round(n/1024))} KB`;return `${(n/1024/1024).toFixed(1)} MB`; }
+function responseOwnsCurrentSession(requestToken){return Boolean(requestToken&&state.token===requestToken);}
+function invalidateSession(message='Sesi berakhir. Silakan masuk kembali.'){
+  authEpoch+=1;state.user=state.data=state.token=null;state.page='dashboard';
+  try{sessionStorage.removeItem('lms_token')}catch(_){}
+  closeModal();closeMenu();$('#appShell')?.classList.add('hidden');$('#loginView')?.classList.remove('hidden');
+  const box=$('#loginError');if(box){box.textContent=message;box.classList.toggle('hidden',!message)}
+}
 async function api(path, options={}){
   if(!API_CONFIGURED)throw new Error('URL Google Apps Script belum dipasang pada config.js.');
   const action=String(path||'').replace(/^\/+api\//,'').split('?')[0].replace(/\/$/,'');
   let payload={};
   if(options.body){try{payload=typeof options.body==='string'?JSON.parse(options.body):options.body}catch(_){throw new Error('Data permintaan tidak valid.')}}
   const query=String(path||'').split('?')[1];if(query)for(const [key,value] of new URLSearchParams(query))payload[key]=value;
-  const request={...payload,action,token:state.token||''};
+  const requestToken=state.token||'';
+  const request={...payload,action,token:requestToken};
   const longRequest=['submissions','students/import','students/password/reset','reports/attendance','reports/grades','reports/learning','reports/archive','feed/post/save','feed/file','materials/save','materials/file'].includes(action);
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),Number(longRequest?CLOUD_CONFIG.UPLOAD_TIMEOUT_MS:CLOUD_CONFIG.REQUEST_TIMEOUT_MS)||(longRequest?120000:45000));
@@ -47,7 +63,12 @@ async function api(path, options={}){
     const response=await fetch(API_URL,{method:'POST',mode:'cors',credentials:'omit',cache:'no-store',redirect:'follow',signal:controller.signal,headers:{'Content-Type':'text/plain;charset=UTF-8'},body:JSON.stringify(request)});
     const text=await response.text();let body;
     try{body=JSON.parse(text)}catch(_){throw new Error('Respons layanan Google tidak dapat dibaca. Pastikan deployment Apps Script menggunakan akses “Anyone”.')}
-    if(!response.ok||!body.ok){const error=new Error(body.error||'Permintaan gagal');error.code=body.code||response.status;if(Number(error.code)===401&&action!=='login'){state.user=state.data=state.token=null;try{sessionStorage.removeItem('lms_token')}catch(_){}$('#appShell')?.classList.add('hidden');$('#loginView')?.classList.remove('hidden');const box=$('#loginError');if(box){box.textContent=error.message;box.classList.remove('hidden')}}throw error;}
+    if(!response.ok||!body.ok){
+      const error=new Error(body.error||'Permintaan gagal');error.code=body.code||response.status;error.action=action;error.requestId=body.request_id||'';
+      // A delayed response belonging to an older token must never sign out a newer session.
+      if(Number(error.code)===401&&action!=='login'&&responseOwnsCurrentSession(requestToken))invalidateSession(error.message);
+      throw error;
+    }
     return body;
   }catch(err){
     if(err.name==='AbortError')throw new Error('Layanan belum merespons. Periksa koneksi lalu coba lagi.');
@@ -58,11 +79,14 @@ async function api(path, options={}){
 function toast(title,message='',type='success'){const el=document.createElement('div');el.className=`toast ${type}`;el.innerHTML=`<i></i><div><b>${esc(title)}</b><span>${esc(message)}</span></div>`;$('#toastArea').append(el);setTimeout(()=>el.remove(),3800);}
 function setLoading(){ $('#pageContent').innerHTML='<div class="page-loader"><span></span><p>Memuat data terbaru...</p></div>'; }
 
-async function loadData(showLoader=false){
+async function loadData(showLoader=false,expectedToken=state.token,expectedEpoch=authEpoch){
   if(showLoader)setLoading();
-  state.data=await api('/api/bootstrap');state.user=state.data.user;
+  const data=await api('/api/bootstrap');
+  if(state.token!==expectedToken||authEpoch!==expectedEpoch)return false;
+  state.data=data;state.user=data.user;
   renderChrome();renderPage();
   if(Number(state.user.must_change)===1&&$('#modal').classList.contains('hidden'))setTimeout(modalChangePassword,0);
+  return true;
 }
 
 function renderChrome(){
@@ -290,22 +314,25 @@ async function submitForm(form,path,transform=x=>x,success='Data berhasil disimp
 // Login and global UI
 $('#loginForm').addEventListener('submit',async e=>{
   e.preventDefault();
-  const box=$('#loginError'),btn=$('button[type="submit"]',e.currentTarget);
+  const box=$('#loginError'),btn=$('button[type="submit"]',e.currentTarget),attempt=++authEpoch;
   box.classList.add('hidden');btn.disabled=true;btn.firstElementChild.textContent='Memeriksa akun...';
   try{
     const r=await api('/api/login',{method:'POST',body:JSON.stringify({username:$('#loginUsername').value,password:$('#loginPassword').value})});
-    state.user=r.user;state.token=r.token;
-    try { sessionStorage.setItem('lms_token',state.token); } catch (_) {}
-    $('#loginView').classList.add('hidden');$('#appShell').classList.remove('hidden');state.page='dashboard';
-    await loadData(true);
+    if(attempt!==authEpoch)return;
+    const loginToken=r.token;state.user=r.user;state.token=loginToken;
+    try { sessionStorage.setItem('lms_token',loginToken); } catch (_) {}
+    state.page='dashboard';await loadData(true);
+    if(attempt!==authEpoch||state.token!==loginToken)return;
+    $('#loginView').classList.add('hidden');$('#appShell').classList.remove('hidden');
   }catch(err){
-    state.token=null;try { sessionStorage.removeItem('lms_token'); } catch (_) {}
+    if(attempt!==authEpoch)return;
+    state.user=state.data=state.token=null;try { sessionStorage.removeItem('lms_token'); } catch (_) {}
     $('#appShell').classList.add('hidden');$('#loginView').classList.remove('hidden');
     box.textContent=err.message;box.classList.remove('hidden');
   }finally{btn.disabled=false;btn.firstElementChild.textContent='Masuk ke LMS';}
 });
 $('#togglePassword').addEventListener('click',()=>{$('#loginPassword').type=$('#loginPassword').type==='password'?'text':'password';});
-$('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST',body:'{}'});}catch(_){}state.user=state.data=state.token=null;try{sessionStorage.removeItem('lms_token');}catch(_){}$('#appShell').classList.add('hidden');$('#loginView').classList.remove('hidden');toast('Sampai jumpa','Anda telah keluar dari LMS.');});
+$('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST',body:'{}'});}catch(_){}invalidateSession('');toast('Sampai jumpa','Anda telah keluar dari LMS.');});
 $('#menuBtn').addEventListener('click',()=>{$('#sidebar').classList.add('open');$('#sidebarOverlay').classList.add('show')});
 function closeMenu(){$('#sidebar').classList.remove('open');$('#sidebarOverlay').classList.remove('show')}
 $('#closeMenu').addEventListener('click',closeMenu);$('#sidebarOverlay').addEventListener('click',closeMenu);
@@ -360,9 +387,7 @@ async function changePassword(form){
   try{
     await api('/api/password/change',{method:'POST',body:JSON.stringify({current_password:current,new_password:next})});
     const username=state.user?.username||'';
-    state.user=state.data=state.token=null;state.page='dashboard';
-    try{sessionStorage.removeItem('lms_token')}catch(_){}
-    form.reset();closeModal();closeMenu();$('#appShell').classList.add('hidden');$('#loginView').classList.remove('hidden');
+    form.reset();invalidateSession('');
     $('#loginUsername').value=username;$('#loginPassword').value='';const box=$('#loginError');box.textContent='';box.classList.add('hidden');
     toast('Kata sandi berhasil diganti','Seluruh sesi telah ditutup. Silakan masuk kembali dengan kata sandi baru.');
     setTimeout(()=>$('#loginPassword')?.focus(),0);
@@ -470,7 +495,7 @@ async function formalExcel(data){if(!window.ExcelJS)throw new Error('Komponen Ex
 function addExcelSignatures(ws,data,row,lastCol,individual){const settings=data.settings||{},date=`${settings.report_city?settings.report_city+', ':''}${data.report_date_text}`,blocks=[];if(individual)blocks.push([1,2,'Mengetahui,\nOrang Tua/Wali','(........................................)','']);blocks.push(individual?[3,5,`${date}\nGuru Mata Pelajaran`,data.teacher_name,`NIP. ${data.teacher_nip||'—'}`]:[1,4,`${date}\nGuru Mata Pelajaran`,data.teacher_name,`NIP. ${data.teacher_nip||'—'}`]);if(data.include_principal)blocks.push(individual?[6,8,'Mengetahui,\nKepala Sekolah',settings.principal_name||'(........................................)',`NIP. ${settings.principal_nip||'—'}`]:[6,9,'Mengetahui,\nKepala Sekolah',settings.principal_name||'(........................................)',`NIP. ${settings.principal_nip||'—'}`]);for(const [start,end,heading,name,nip] of blocks){ws.mergeCells(row,start,row+1,end);ws.getCell(row,start).value=excelSafe(heading);ws.getCell(row,start).alignment={horizontal:'center',vertical:'top',wrapText:true};ws.mergeCells(row+4,start,row+4,end);ws.getCell(row+4,start).value=excelSafe(name);ws.getCell(row+4,start).font={bold:true,underline:true};ws.getCell(row+4,start).alignment={horizontal:'center'};ws.mergeCells(row+5,start,row+5,end);ws.getCell(row+5,start).value=excelSafe(nip);ws.getCell(row+5,start).alignment={horizontal:'center'};}}
 async function generateLearningReport(form,output){const fd=new FormData(form),payload=Object.fromEntries(fd.entries());payload.class_id=Number(payload.class_id);payload.subject_id=Number(payload.subject_id);if(payload.student_id)payload.student_id=Number(payload.student_id);payload.include_principal=fd.has('include_principal');const buttons=$$('button[type="submit"]',form),popup=output==='print'?window.open('','_blank'):null;if(output==='print'&&!popup)return toast('Jendela diblokir','Izinkan pop-up untuk membuka pratinjau cetak.','error');if(popup)popup.document.write('<!doctype html><title>Menyiapkan laporan</title><div style="font:16px Arial;padding:40px;text-align:center">Menyiapkan dokumen resmi...</div>');buttons.forEach(button=>button.disabled=true);try{const data=await api('/api/reports/learning',{method:'POST',body:JSON.stringify(payload)});if(output==='print'){popup.document.open();popup.document.write(buildFormalPrint(data));popup.document.close();popup.document.getElementById('printReportButton')?.addEventListener('click',()=>popup.print());popup.focus();toast('Pratinjau siap','Gunakan tombol Cetak / Simpan PDF pada dokumen.');}else{const result=await formalExcel(data);toast('Excel formal siap',`${result.filename}${result.archived?' · tersimpan privat di Drive':' · arsip Drive gagal, unduhan tetap dibuat'}`);}}catch(err){if(popup&&!popup.closed)popup.close();toast('Gagal membuat laporan',err.message,'error');}finally{buttons.forEach(button=>button.disabled=false);}}
 async function downloadReport(kind,btn){const labels={attendance:'Rekap Absensi',grades:'Rekap Nilai'};if(!labels[kind])return;const payload={};if(state.filters.reportClass)payload.class_id=Number(state.filters.reportClass);if(state.filters.reportSubject)payload.subject_id=Number(state.filters.reportSubject);if(kind==='attendance'&&state.filters.reportDateFrom)payload.date_from=state.filters.reportDateFrom;if(kind==='attendance'&&state.filters.reportDateTo)payload.date_to=state.filters.reportDateTo;const original=btn.textContent;btn.disabled=true;btn.textContent='Menyiapkan Excel...';try{const data=await api(`/api/reports/${kind}`,{method:'POST',body:JSON.stringify(payload)});const archived=await writeReportWorkbook(data);toast('Laporan siap',`${labels[kind]} berhasil diunduh${archived?' dan diarsipkan privat di Drive':'; arsip Drive gagal'}.`);}catch(err){toast('Gagal membuat laporan',err.message,'error')}finally{btn.disabled=false;btn.textContent=original}}
-async function refreshSilently(){state.data=await api('/api/bootstrap');}
+async function refreshSilently(expectedToken=state.token,expectedEpoch=authEpoch){const data=await api('/api/bootstrap');if(state.token!==expectedToken||authEpoch!==expectedEpoch)return false;state.data=data;return true;}
 
 // Progressive Web App
 let deferredInstallPrompt=null;
@@ -479,10 +504,22 @@ $('#installAppBtn')?.addEventListener('click',async()=>{if(!deferredInstallPromp
 window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;$('#installAppBtn')?.classList.add('hidden');toast('Pemasangan selesai','LMS kini dapat dibuka dari layar utama.');});
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));}
 
+async function restoreSession(startupToken=state.token,startupEpoch=authEpoch){
+  if(!startupToken)return;
+  try{
+    const r=await api('/api/me');
+    if(authEpoch!==startupEpoch||state.token!==startupToken)return;
+    if(!r.user){invalidateSession('Sesi berakhir. Silakan masuk kembali.');return;}
+    state.user=r.user;await loadData(true);
+    if(authEpoch!==startupEpoch||state.token!==startupToken)return;
+    $('#loginView').classList.add('hidden');$('#appShell').classList.remove('hidden');
+  }catch(error){if(authEpoch===startupEpoch&&state.token===startupToken)invalidateSession(error.message);}
+}
+
 // Start
 (function init(){if(window.matchMedia?.('(display-mode: standalone)').matches)$('#installAppBtn')?.classList.add('hidden');
   const now=new Date();$('#todayDay').textContent=now.toLocaleDateString('id-ID',{weekday:'long'});$('#todayDate').textContent=now.toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
   if(!API_CONFIGURED){const box=$('#loginError');box.textContent='Konfigurasi belum selesai: pasang URL deployment Google Apps Script pada config.js.';box.classList.remove('hidden');$('#cloudStatus').textContent='Layanan belum dikonfigurasi';return;}
   api('/api/health').then(r=>{$('#cloudStatus').textContent=r.configured?'Layanan cloud tersambung':'Backend belum disiapkan — jalankan setupLms()';}).catch(error=>{$('#cloudStatus').textContent=error.message;});
-  api('/api/me').then(async r=>{if(r.user){state.user=r.user;$('#loginView').classList.add('hidden');$('#appShell').classList.remove('hidden');try{await loadData(true);}catch(_){$('#appShell').classList.add('hidden');$('#loginView').classList.remove('hidden');}}}).catch(()=>{});
+  restoreSession();
 })();
