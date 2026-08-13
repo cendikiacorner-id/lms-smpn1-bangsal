@@ -53,8 +53,13 @@ function fileFromBase64(out, fallback){
   const binary=atob(out.file_base64||''),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
   downloadBlob(new Blob([bytes],{type:out.mime_type||'application/octet-stream'}),out.filename||fallback||'berkas');
 }
+var UI_FILE_LIMIT = 8*1024*1024;
 function readUiFile(file){
-  return new Promise((resolve,reject)=>{if(!file)return resolve({});if(file.size>8*1024*1024)return reject(new Error('Ukuran berkas maksimal 8 MB.'));const reader=new FileReader();reader.onload=()=>resolve({file_name:file.name,file_type:file.type||'application/octet-stream',file_content:reader.result});reader.onerror=()=>reject(new Error('Berkas gagal dibaca.'));reader.readAsDataURL(file);});
+  return new Promise((resolve,reject)=>{if(!file)return resolve({});if(file.size>UI_FILE_LIMIT)return reject(new Error(`Ukuran ${formatBytes(file.size)} melebihi batas 8 MB.`));const reader=new FileReader();reader.onload=()=>resolve({file_name:file.name,file_type:file.type||'application/octet-stream',file_content:reader.result});reader.onerror=()=>reject(new Error('Berkas gagal dibaca.'));reader.readAsDataURL(file);});
+}
+function setPostStatus(message,kind='warn'){
+  const box=$('#postStatus');if(!box)return;
+  box.textContent=message||'';box.className=`result-box ${kind} full${message?'':' hidden'}`;
 }
 function showAsyncError(page,error){ if(pageStill(page)) $('#pageContent').innerHTML=`${head(titleByPage[page]||'LMS','Data belum dapat dimuat.')}<div class="result-box warn"><b>Terjadi kendala.</b><br>${esc(error.message)}</div>`; }
 
@@ -81,7 +86,7 @@ function timelinePost(post,comments){
 function modalPost(id=0){
   const existing=id&&state.feedData?.posts.find(x=>Number(x.id)===id),student=state.user.role==='student';if(id&&!existing)return;
   const draft=!existing&&readPostDraft(),model=existing||draft||{};
-  openModal(existing?'Edit Kiriman':(student?'Mulai Diskusi':'Buat Kiriman Kelas'),`<form id="postForm" class="form-grid">
+  openModal(existing?'Edit Kiriman':(student?'Mulai Diskusi':'Buat Kiriman Kelas'),`<form id="postForm" class="form-grid" novalidate>
     ${draft?'<div class="result-box warn full"><b>Draf sebelumnya dipulihkan.</b><br>Periksa kembali isinya. Jika sebelumnya memilih lampiran, pilih ulang berkas tersebut sebelum menerbitkan.</div>':''}
     <input type="hidden" name="id" value="${existing?.id||''}">
     <label class="full">Kelas & mata pelajaran<select id="postPair" class="form-control" required><option value="">Pilih ruang kelas</option>${pairOptions(model.class_id,model.subject_id)}</select></label>
@@ -90,6 +95,7 @@ function modalPost(id=0){
     <label class="full">Isi kiriman<textarea class="form-control tall" name="body" maxlength="10000" required placeholder="Tulis pengumuman atau pertanyaan diskusi...">${esc(model.body||'')}</textarea></label>
     <label class="full">Lampiran privat <small>(opsional, maks. 8 MB)</small><input class="form-control" id="postFile" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.zip,.mp3,.mp4"></label>
     ${!student?`<label class="check-line full"><input type="checkbox" name="is_important" value="1" ${model.is_important?'checked':''}><span><b>Kirim sebagai informasi penting</b><small>Membuat notifikasi dalam aplikasi dan antrean email hanya untuk email siswa yang telah disetujui admin.</small></span></label>`:''}
+    <div id="postStatus" class="result-box warn full hidden" role="status" aria-live="polite"></div>
     <div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button type="submit" class="btn btn-primary">${existing?'Simpan Perubahan':'Terbitkan'}</button></div>
   </form>`,'Linimasa kelas');
 }
@@ -206,28 +212,55 @@ document.addEventListener('click',async event=>{
   if(action==='email-decision'){try{await api('/api/admin/email/decision',{method:'POST',body:JSON.stringify({contact_id:id,decision:button.dataset.decision})});toast('Keputusan tersimpan');await loadData();state.page='contacts';renderContacts();}catch(error){toast('Gagal',error.message,'error')}return;}
 });
 
-document.addEventListener('change',event=>{if(event.target.id==='feedClassFilter'){state.filters.feedClass=event.target.value;renderTimeline();}});
-document.addEventListener('click',event=>{if(event.target.closest('[data-close-modal]')&&activeQuizAttempt){saveQuizDraft(true);clearQuizTimers();activeQuizAttempt=null;}} ,true);
+document.addEventListener('change',event=>{
+  if(event.target.id==='feedClassFilter'){state.filters.feedClass=event.target.value;renderTimeline();return;}
+  if(event.target.id==='postFile'){
+    const file=event.target.files?.[0];
+    if(!file){setPostStatus('');return;}
+    if(file.size>UI_FILE_LIMIT){setPostStatus(`Lampiran ${file.name} berukuran ${formatBytes(file.size)} dan melebihi batas 8 MB. Pilih berkas yang lebih kecil.`);return;}
+    setPostStatus(`Lampiran siap: ${file.name} (${formatBytes(file.size)}).`,'good');
+  }
+});
+document.addEventListener('click',event=>{
+  const postForm=$('#postForm');
+  if(postForm?.dataset.submitting==='1'&&event.target.closest('[data-close-modal]')){event.preventDefault();event.stopImmediatePropagation();setPostStatus('Kiriman sedang diproses. Tunggu sampai berhasil atau muncul pesan kesalahan.');return;}
+  if(event.target.closest('[data-close-modal]')&&activeQuizAttempt){saveQuizDraft(true);clearQuizTimers();activeQuizAttempt=null;}
+},true);
 
 document.addEventListener('submit',async event=>{
   const form=event.target;
   if(form.matches('.comment-form')){event.preventDefault();const input=$('input[name="body"]',form);try{await api('/api/feed/comment/save',{method:'POST',body:JSON.stringify({post_id:Number(form.dataset.post),body:input.value})});input.value='';toast('Komentar dikirim');renderTimeline();}catch(error){toast('Gagal',error.message,'error')}return;}
   if(form.id==='postForm'){
     event.preventDefault();
-    const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),pair=$('#postPair').value.split('|').map(Number),btn=$('button[type="submit"],button:not([type])',form);
-    const post={...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],is_important:fd.has('is_important'),publish_at:obj.publish_at||''};
+    if(form.dataset.submitting==='1')return;
+    const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),pairField=$('#postPair'),pairValue=pairField?.value||'',pair=pairValue.split('|').map(Number),bodyField=$('[name="body"]',form),fileField=$('#postFile'),fileObject=fileField?.files?.[0],btn=$('button[type="submit"],button:not([type])',form),cancelBtn=$('[data-close-modal]',form);
+    const post={...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],body:String(obj.body||'').trim(),is_important:fd.has('is_important'),publish_at:obj.publish_at||''};
     if(!post.id)savePostDraft(post);
-    if(btn)btn.disabled=true;
+    if(!pairValue||!post.class_id||!post.subject_id){setPostStatus('Pilih Kelas & mata pelajaran sebelum menerbitkan.');pairField?.focus();return;}
+    if(!post.body){setPostStatus('Isi kiriman wajib diisi sebelum menerbitkan.');bodyField?.focus();return;}
+    if(fileObject?.size>UI_FILE_LIMIT){setPostStatus(`Lampiran ${fileObject.name} berukuran ${formatBytes(fileObject.size)} dan melebihi batas 8 MB. Pilih berkas yang lebih kecil.`);fileField?.focus();return;}
+    const originalLabel=btn?.textContent||'Terbitkan';
+    form.dataset.submitting='1';form.setAttribute('aria-busy','true');
+    if(btn){btn.disabled=true;btn.textContent=fileObject?'Membaca lampiran...':'Mengirim...';}
+    if(cancelBtn)cancelBtn.disabled=true;
+    setPostStatus(fileObject?`Membaca ${fileObject.name} (${formatBytes(fileObject.size)})...`:'Mengirim kiriman. Jangan tutup halaman...','good');
     try{
-      const file=await readUiFile($('#postFile').files[0]);
+      const file=await readUiFile(fileObject);
+      if(btn)btn.textContent='Mengirim...';
+      setPostStatus(fileObject?`Mengunggah ${fileObject.name}. Jangan tutup halaman...`:'Mengirim kiriman. Jangan tutup halaman...','good');
       await api('/api/feed/post/save',{method:'POST',body:JSON.stringify({...post,publish_at:post.publish_at?post.publish_at+':00':'',...file})});
       if(!post.id)clearPostDraft();
       toast('Kiriman disimpan');closeModal();renderTimeline();
     }catch(error){
-      const sessionEnded=Number(error.code)===401;
-      const guidance=sessionEnded?'Silakan masuk kembali, lalu buka Linimasa Kelas dan pilih Buat Kiriman; draf akan dipulihkan.':'Periksa linimasa sebelum mencoba lagi. Draf teks tetap tersimpan; lampiran perlu dipilih ulang.';
+      const sessionEnded=Number(error.code)===401,uncertain=!sessionEnded&&(!error.code||error.code==='NON_JSON_RESPONSE'||Number(error.code)>=500);
+      const guidance=sessionEnded?'Silakan masuk kembali, lalu buka Linimasa Kelas dan pilih Buat Kiriman; draf akan dipulihkan.':uncertain?'Tutup kotak ini dan periksa linimasa. Jangan menerbitkan ulang sebelum memastikan kiriman belum muncul. Draf teks tetap tersimpan; lampiran perlu dipilih ulang.':'Periksa isian, lalu coba kembali. Draf teks tetap tersimpan; lampiran tetap dipilih selama kotak ini terbuka.';
+      const errorTitle=uncertain?'Status kiriman belum pasti':'Kiriman belum tersimpan';
+      setPostStatus(`${errorTitle}. ${error.message} ${guidance}`);
       if(sessionEnded){const box=$('#loginError');if(box){box.textContent=`${error.message} ${guidance}`;box.classList.remove('hidden')}}
-      toast('Kiriman belum tersimpan',`${error.message} ${guidance}`,'error');if(btn)btn.disabled=false;
+      toast(errorTitle,`${error.message} ${guidance}`,'error');
+      form.dataset.submitting='';form.removeAttribute('aria-busy');
+      if(btn){btn.disabled=uncertain;btn.textContent=uncertain?'Periksa Linimasa':originalLabel;}
+      if(cancelBtn)cancelBtn.disabled=false;
     }
     return;
   }
