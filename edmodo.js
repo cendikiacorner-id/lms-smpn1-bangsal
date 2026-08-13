@@ -96,7 +96,7 @@ function modalPost(id=0){
     <label class="full">Lampiran privat <small>(opsional, maks. 8 MB)</small><input class="form-control" id="postFile" type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.zip,.mp3,.mp4"></label>
     ${!student?`<label class="check-line full"><input type="checkbox" name="is_important" value="1" ${model.is_important?'checked':''}><span><b>Kirim sebagai informasi penting</b><small>Membuat notifikasi dalam aplikasi dan antrean email hanya untuk email siswa yang telah disetujui admin.</small></span></label>`:''}
     <div id="postStatus" class="result-box warn full hidden" role="status" aria-live="polite"></div>
-    <div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button type="submit" class="btn btn-primary">${existing?'Simpan Perubahan':'Terbitkan'}</button></div>
+    <div class="form-actions full"><button type="button" class="btn btn-secondary" data-close-modal>Batal</button><button type="button" class="btn btn-primary" data-action="submit-post">${existing?'Simpan Perubahan':'Terbitkan'}</button></div>
   </form>`,'Linimasa kelas');
 }
 
@@ -186,6 +186,7 @@ function navigateReference(type,id){
 // are intentionally no-ops in app.js, then resolved here.
 document.addEventListener('click',async event=>{
   const button=event.target.closest('[data-action]');if(!button)return;const action=button.dataset.action,id=Number(button.dataset.id||0);
+  if(action==='submit-post'){event.preventDefault();return submitPostForm(button.closest('#postForm'));}
   if(action==='forgot-password')return modalForgotPassword();
   if(action==='new-post')return modalPost();
   if(action==='edit-post')return modalPost(id);
@@ -227,43 +228,47 @@ document.addEventListener('click',event=>{
   if(event.target.closest('[data-close-modal]')&&activeQuizAttempt){saveQuizDraft(true);clearQuizTimers();activeQuizAttempt=null;}
 },true);
 
-document.addEventListener('submit',async event=>{
-  const form=event.target;
-  if(form.matches('.comment-form')){event.preventDefault();const input=$('input[name="body"]',form);try{await api('/api/feed/comment/save',{method:'POST',body:JSON.stringify({post_id:Number(form.dataset.post),body:input.value})});input.value='';toast('Komentar dikirim');renderTimeline();}catch(error){toast('Gagal',error.message,'error')}return;}
-  if(form.id==='postForm'){
-    event.preventDefault();
-    if(form.dataset.submitting==='1')return;
-    const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),pairField=$('#postPair'),pairValue=pairField?.value||'',pair=pairValue.split('|').map(Number),bodyField=$('[name="body"]',form),fileField=$('#postFile'),fileObject=fileField?.files?.[0],btn=$('button[type="submit"],button:not([type])',form),cancelBtn=$('[data-close-modal]',form);
+async function submitPostForm(form){
+  if(!form)return setPostStatus('Formulir kiriman tidak ditemukan. Muat ulang halaman.');
+  if(form.dataset.submitting==='1'){setPostStatus('Kiriman sedang diproses. Tunggu sampai berhasil atau muncul pesan kesalahan.','good');return;}
+  const btn=$('[data-action="submit-post"],button[type="submit"],button:not([type])',form),cancelBtn=$('[data-close-modal]',form),originalLabel=btn?.textContent||'Terbitkan';
+  let writeStarted=false;
+  try{
+    setPostStatus('Memeriksa isian kiriman...','good');
+    const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),pairField=$('#postPair'),pairValue=pairField?.value||'',pair=pairValue.split('|').map(Number),bodyField=$('[name="body"]',form),fileField=$('#postFile'),fileObject=fileField?.files?.[0];
     const post={...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],body:String(obj.body||'').trim(),is_important:fd.has('is_important'),publish_at:obj.publish_at||''};
     if(!post.id)savePostDraft(post);
     if(!pairValue||!post.class_id||!post.subject_id){setPostStatus('Pilih Kelas & mata pelajaran sebelum menerbitkan.');pairField?.focus();return;}
     if(!post.body){setPostStatus('Isi kiriman wajib diisi sebelum menerbitkan.');bodyField?.focus();return;}
     if(fileObject?.size>UI_FILE_LIMIT){setPostStatus(`Lampiran ${fileObject.name} berukuran ${formatBytes(fileObject.size)} dan melebihi batas 8 MB. Pilih berkas yang lebih kecil.`);fileField?.focus();return;}
-    const originalLabel=btn?.textContent||'Terbitkan';
     form.dataset.submitting='1';form.setAttribute('aria-busy','true');
     if(btn){btn.disabled=true;btn.textContent=fileObject?'Membaca lampiran...':'Mengirim...';}
     if(cancelBtn)cancelBtn.disabled=true;
     setPostStatus(fileObject?`Membaca ${fileObject.name} (${formatBytes(fileObject.size)})...`:'Mengirim kiriman. Jangan tutup halaman...','good');
-    try{
-      const file=await readUiFile(fileObject);
-      if(btn)btn.textContent='Mengirim...';
-      setPostStatus(fileObject?`Mengunggah ${fileObject.name}. Jangan tutup halaman...`:'Mengirim kiriman. Jangan tutup halaman...','good');
-      await api('/api/feed/post/save',{method:'POST',body:JSON.stringify({...post,publish_at:post.publish_at?post.publish_at+':00':'',...file})});
-      if(!post.id)clearPostDraft();
-      toast('Kiriman disimpan');closeModal();renderTimeline();
-    }catch(error){
-      const sessionEnded=Number(error.code)===401,uncertain=!sessionEnded&&(!error.code||error.code==='NON_JSON_RESPONSE'||Number(error.code)>=500);
-      const guidance=sessionEnded?'Silakan masuk kembali, lalu buka Linimasa Kelas dan pilih Buat Kiriman; draf akan dipulihkan.':uncertain?'Tutup kotak ini dan periksa linimasa. Jangan menerbitkan ulang sebelum memastikan kiriman belum muncul. Draf teks tetap tersimpan; lampiran perlu dipilih ulang.':'Periksa isian, lalu coba kembali. Draf teks tetap tersimpan; lampiran tetap dipilih selama kotak ini terbuka.';
-      const errorTitle=uncertain?'Status kiriman belum pasti':'Kiriman belum tersimpan';
-      setPostStatus(`${errorTitle}. ${error.message} ${guidance}`);
-      if(sessionEnded){const box=$('#loginError');if(box){box.textContent=`${error.message} ${guidance}`;box.classList.remove('hidden')}}
-      toast(errorTitle,`${error.message} ${guidance}`,'error');
-      form.dataset.submitting='';form.removeAttribute('aria-busy');
-      if(btn){btn.disabled=uncertain;btn.textContent=uncertain?'Periksa Linimasa':originalLabel;}
-      if(cancelBtn)cancelBtn.disabled=false;
-    }
-    return;
+    const file=await readUiFile(fileObject);
+    if(btn)btn.textContent='Mengirim...';
+    setPostStatus(fileObject?`Mengunggah ${fileObject.name}. Jangan tutup halaman...`:'Mengirim kiriman. Jangan tutup halaman...','good');
+    writeStarted=true;
+    await api('/api/feed/post/save',{method:'POST',body:JSON.stringify({...post,publish_at:post.publish_at?post.publish_at+':00':'',...file})});
+    if(!post.id)clearPostDraft();
+    toast('Kiriman disimpan');closeModal();renderTimeline();
+  }catch(error){
+    const sessionEnded=Number(error.code)===401,uncertain=writeStarted&&!sessionEnded&&(!error.code||error.code==='NON_JSON_RESPONSE'||Number(error.code)>=500);
+    const guidance=sessionEnded?'Silakan masuk kembali, lalu buka Linimasa Kelas dan pilih Buat Kiriman; draf akan dipulihkan.':uncertain?'Tutup kotak ini dan periksa linimasa. Jangan menerbitkan ulang sebelum memastikan kiriman belum muncul. Draf teks tetap tersimpan; lampiran perlu dipilih ulang.':writeStarted?'Periksa isian, lalu coba kembali. Draf teks tetap tersimpan; lampiran tetap dipilih selama kotak ini terbuka.':'Permintaan belum dikirim. Periksa isian atau muat ulang halaman; draf teks tetap tersimpan.';
+    const errorTitle=uncertain?'Status kiriman belum pasti':'Kiriman belum tersimpan';
+    setPostStatus(`${errorTitle}. ${error.message} ${guidance}`);
+    if(sessionEnded){const box=$('#loginError');if(box){box.textContent=`${error.message} ${guidance}`;box.classList.remove('hidden')}}
+    toast(errorTitle,`${error.message} ${guidance}`,'error');
+    form.dataset.submitting='';form.removeAttribute('aria-busy');
+    if(btn){btn.disabled=uncertain;btn.textContent=uncertain?'Periksa Linimasa':originalLabel;}
+    if(cancelBtn)cancelBtn.disabled=false;
   }
+}
+
+document.addEventListener('submit',async event=>{
+  const form=event.target;
+  if(form.matches('.comment-form')){event.preventDefault();const input=$('input[name="body"]',form);try{await api('/api/feed/comment/save',{method:'POST',body:JSON.stringify({post_id:Number(form.dataset.post),body:input.value})});input.value='';toast('Komentar dikirim');renderTimeline();}catch(error){toast('Gagal',error.message,'error')}return;}
+  if(form.id==='postForm'){event.preventDefault();await submitPostForm(form);return;}
   if(form.id==='moduleForm'){event.preventDefault();const obj=Object.fromEntries(new FormData(form).entries()),pair=$('#modulePair').value.split('|').map(Number);submitForm(form,'/api/modules/save',()=>({...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],position:Number(obj.position)}),'Modul berhasil disimpan.');return;}
   if(form.id==='materialForm'){event.preventDefault();const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),btn=$('button[type="submit"],button:not([type])',form);btn.disabled=true;try{const file=await readUiFile($('#materialFile').files[0]);await api('/api/materials/save',{method:'POST',body:JSON.stringify({...obj,id:Number(obj.id||0),module_id:Number(obj.module_id),position:Number(obj.position),publish_at:obj.publish_at?obj.publish_at+':00':'',...file})});toast('Materi disimpan');closeModal();renderMaterials();}catch(error){toast('Gagal',error.message,'error');btn.disabled=false}return;}
   if(form.id==='quizForm'){event.preventDefault();const fd=new FormData(form),obj=Object.fromEntries(fd.entries()),pair=$('#quizPair').value.split('|').map(Number);submitForm(form,'/api/quizzes/save',()=>({...obj,id:Number(obj.id||0),class_id:pair[0],subject_id:pair[1],duration_minutes:Number(obj.duration_minutes),max_attempts:Number(obj.max_attempts),shuffle_questions:fd.has('shuffle_questions'),shuffle_options:fd.has('shuffle_options'),show_result:fd.has('show_result'),open_at:obj.open_at+':00',close_at:obj.close_at+':00'}),'Kuis berhasil disimpan.');return;}
