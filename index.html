@@ -14,11 +14,12 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./assets/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="./assets/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=15.0">
+  <link rel="stylesheet" href="./styles.css?v=20.0">
   <script defer src="./config.js"></script>
   <script defer src="./vendor/xlsx.full.min.js"></script>
   <script defer src="./vendor/exceljs.min.js"></script>
-  <script defer src="./app.js?v=15.0"></script>
+  <script defer src="./app.js?v=20.0"></script>
+  <script defer src="./edmodo.js?v=20.0"></script>
 </head>
 <body>
   <section id="loginView" class="login-view">
@@ -53,6 +54,7 @@
         </label>
         <div id="loginError" class="form-error hidden"></div>
         <button class="btn btn-primary btn-block" type="submit"><span>Masuk ke LMS</span><span>→</span></button>
+        <button class="login-help" type="button" data-action="forgot-password">Lupa kata sandi? Pulihkan melalui email terverifikasi</button>
         <div class="demo-box cloud-box">
           <div><span class="demo-dot"></span><b>LMS Online Sekolah</b></div>
           <p>Data tersimpan terpusat di Google Sheets dan Google Drive. Gunakan akun yang diberikan administrator.</p>
@@ -68,7 +70,7 @@
       <div class="sidebar-brand">
         <img src="./assets/logo-smpn1-bangsal.png" alt="Logo SMPN 1 Bangsal">
         <div><b>LMS</b><span>SMPN 1 Bangsal</span></div>
-        <button id="closeMenu" class="icon-btn sidebar-close">×</button>
+        <button id="closeMenu" class="icon-btn sidebar-close" type="button" aria-label="Tutup menu">×</button>
       </div>
       <div class="school-year"><span>TA</span><div><small>Tahun Pelajaran</small><b id="sidebarYear">2026/2027</b></div></div>
       <nav id="mainNav"></nav>
@@ -80,12 +82,12 @@
     <div id="sidebarOverlay" class="sidebar-overlay"></div>
     <section class="workspace">
       <header class="topbar">
-        <button id="menuBtn" class="icon-btn menu-btn">☰</button>
+        <button id="menuBtn" class="icon-btn menu-btn" type="button" aria-label="Buka menu">☰</button>
         <div class="top-title"><span id="breadcrumbs">LMS / Dasbor</span><h1 id="pageTitle">Dasbor</h1></div>
         <div class="top-actions">
           <div class="today"><span id="todayDay"></span><small id="todayDate"></small></div>
           <button id="installAppBtn" class="btn btn-sm btn-soft install-btn hidden" type="button" title="Pasang LMS di perangkat"><b>＋</b><span>Pasang Aplikasi</span></button>
-          <button class="icon-btn notification" title="Notifikasi">♢<i></i></button>
+          <button id="notificationBtn" class="icon-btn notification" data-page="notifications" title="Notifikasi" aria-label="Notifikasi">♢<i></i></button>
           <div id="topAvatar" class="avatar avatar-purple">YH</div>
         </div>
       </header>
@@ -93,13 +95,13 @@
     </section>
   </div>
 
-  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-backdrop" data-close-modal></div>
     <section class="modal-card">
-      <header><div><span id="modalEyebrow" class="eyebrow">Formulir</span><h2 id="modalTitle">Tambah Data</h2></div><button class="icon-btn" data-close-modal>×</button></header>
+      <header><div><span id="modalEyebrow" class="eyebrow">Formulir</span><h2 id="modalTitle">Tambah Data</h2></div><button class="icon-btn" type="button" data-close-modal aria-label="Tutup dialog">×</button></header>
       <div id="modalBody" class="modal-body"></div>
     </section>
   </div>
-  <div id="toastArea" class="toast-area"></div>
+  <div id="toastArea" class="toast-area" role="status" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
