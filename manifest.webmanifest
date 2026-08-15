@@ -10,7 +10,7 @@
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
   "background_color": "#f5f6fa",
-  "theme_color": "#4f46e5",
+  "theme_color": "#4c3f91",
   "categories": ["education", "productivity"],
   "icons": [
     {"src": "./assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},

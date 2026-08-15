@@ -5,62 +5,68 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://script.google.com https://script.googleusercontent.com https://*.googleusercontent.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#4f46e5">
+  <meta name="theme-color" content="#4c3f91">
   <meta name="application-name" content="LMS SMPN 1 Bangsal">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="LMS Bangsal">
-  <title>LMS SMPN 1 Bangsal</title>
+  <title>ELSABA | LMS SMPN 1 Bangsal</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./assets/icon-192.png" sizes="192x192">
   <link rel="apple-touch-icon" href="./assets/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=20.6">
+  <link rel="stylesheet" href="./styles.css?v=20.7">
   <script defer src="./config.js"></script>
   <script defer src="./vendor/xlsx.full.min.js"></script>
   <script defer src="./vendor/exceljs.min.js"></script>
-  <script defer src="./app.js?v=20.6"></script>
-  <script defer src="./edmodo.js?v=20.6"></script>
+  <script defer src="./app.js?v=20.7"></script>
+  <script defer src="./edmodo.js?v=20.7"></script>
 </head>
 <body>
   <section id="loginView" class="login-view">
     <div class="login-art">
-      <div class="glow glow-one"></div><div class="glow glow-two"></div>
+      <div class="glow glow-one" aria-hidden="true"></div>
+      <div class="glow glow-two" aria-hidden="true"></div>
+      <div class="login-rings" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="brand-lockup">
-        <div class="brand-logo"><img src="./assets/logo-smpn1-bangsal.png" alt="Logo SMPN 1 Bangsal"></div>
-        <div><span class="eyebrow light">Ruang belajar digital</span><h1>LMS SMPN 1 Bangsal</h1></div>
+        <div class="brand-logo"><img src="./assets/logo-smpn1-bangsal.png" alt="Logo SMP Negeri 1 Bangsal"></div>
+        <div class="school-lockup"><b>SMP Negeri 1 Bangsal</b><span>Kabupaten Mojokerto</span></div>
       </div>
       <div class="login-hero-copy">
-        <span class="pill glass">Kurikulum Merdeka · Fase D</span>
-        <h2>Satu ruang untuk belajar, bertumbuh, dan berprestasi.</h2>
-        <p>Kelola pembelajaran seluruh mata pelajaran, absensi, tugas, proyek, dan penilaian dalam satu sistem yang sederhana.</p>
+        <div class="elsaba-wordmark-shell"><img src="./assets/logo-elsaba.png" alt="ELSABA"></div>
+        <span class="hero-kicker"><i></i> Ekosistem belajar digital</span>
+        <h2>Satu ruang untuk <em>semua belajar.</em></h2>
+        <p>Akses pembelajaran, diskusi, tugas, dan perkembangan belajar dalam satu pengalaman yang sederhana dan terhubung.</p>
       </div>
       <div class="feature-row">
-        <div><span class="feature-icon">✓</span><p><b>Terintegrasi</b><small>Semua mapel & kelas</small></p></div>
-        <div><span class="feature-icon">↗</span><p><b>Responsif</b><small>Nyaman di HP</small></p></div>
-        <div><span class="feature-icon">◎</span><p><b>Terukur</b><small>Rekap otomatis</small></p></div>
+        <div><span class="feature-icon">✓</span><p><b>Terintegrasi</b><small>Semua kelas &amp; mapel</small></p></div>
+        <div><span class="feature-icon">▣</span><p><b>Responsif</b><small>Nyaman di HP</small></p></div>
+        <div><span class="feature-icon">↗</span><p><b>Terukur</b><small>Rekap lebih mudah</small></p></div>
       </div>
     </div>
     <div class="login-panel">
       <form id="loginForm" class="login-card">
-        <div class="mobile-brand"><img src="./assets/logo-smpn1-bangsal.png" alt="Logo"><b>LMS SMPN 1 Bangsal</b></div>
-        <span class="eyebrow">Selamat datang</span>
-        <h3>Masuk ke akun Anda</h3>
-        <p class="muted">Gunakan akun yang diberikan oleh administrator sekolah.</p>
+        <div class="mobile-brand">
+          <img src="./assets/logo-smpn1-bangsal.png" alt="Logo SMP Negeri 1 Bangsal">
+          <div><b>SMP NEGERI 1 BANGSAL</b><small>Layanan pembelajaran digital</small></div>
+        </div>
+        <span class="eyebrow login-welcome"><i></i> Selamat datang</span>
+        <h3>Masuk ke ELSABA</h3>
+        <p class="muted">Gunakan akun yang telah diberikan oleh administrator sekolah.</p>
         <label>Nama pengguna
           <div class="input-wrap"><span class="input-icon">@</span><input id="loginUsername" autocomplete="username" placeholder="Masukkan nama pengguna" required></div>
         </label>
         <label>Kata sandi
-          <div class="input-wrap"><span class="input-icon">••</span><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Masukkan kata sandi" required><button type="button" id="togglePassword" class="icon-btn tiny" aria-label="Tampilkan kata sandi">◉</button></div>
+          <div class="input-wrap"><span class="input-icon password-mark">••</span><input id="loginPassword" type="password" autocomplete="current-password" placeholder="Masukkan kata sandi" required><button type="button" id="togglePassword" class="icon-btn tiny" aria-label="Tampilkan kata sandi">◉</button></div>
         </label>
+        <div class="login-meta"><span>Akun sekolah terverifikasi</span><button class="login-help" type="button" data-action="forgot-password">Lupa kata sandi?</button></div>
         <div id="loginError" class="form-error hidden"></div>
-        <button class="btn btn-primary btn-block" type="submit"><span>Masuk ke LMS</span><span>→</span></button>
-        <button class="login-help" type="button" data-action="forgot-password">Lupa kata sandi? Pulihkan melalui email terverifikasi</button>
+        <button class="btn btn-primary btn-block" type="submit"><span>Masuk ke ELSABA</span><span class="login-arrow">→</span></button>
         <div class="demo-box cloud-box">
-          <div><span class="demo-dot"></span><b>LMS Online Sekolah</b></div>
-          <p>Data tersimpan terpusat di Google Sheets dan Google Drive. Gunakan akun yang diberikan administrator.</p>
+          <div><span class="demo-dot"></span><b>Layanan sekolah siap digunakan</b></div>
+          <p>Data pembelajaran tersimpan secara terpusat dan aman.</p>
           <small id="cloudStatus" class="muted">Memeriksa koneksi layanan…</small>
         </div>
-        <footer>© 2026 SMP Negeri 1 Bangsal · Kab. Mojokerto · v1.0 Cloud</footer>
+        <footer>© 2026 SMP Negeri 1 Bangsal · ELSABA<br>Kabupaten Mojokerto</footer>
       </form>
     </div>
   </section>
